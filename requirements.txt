@@ -253,6 +253,7 @@ multidict=6.0.2=py311h2bbff1b_0
 multipledispatch=0.6.0=py311haa95532_0
 munkres=1.1.4=py_0
 mypy_extensions=0.4.3=py311haa95532_1
+mysql-connector-python=8.1.0=pypi_0
 navigator-updater=0.4.0=py311haa95532_0
 nbclassic=0.5.5=py311haa95532_0
 nbclient=0.5.13=py311haa95532_0
@@ -302,6 +303,7 @@ prometheus_client=0.14.1=py311haa95532_0
 prompt-toolkit=3.0.36=py311haa95532_0
 prompt_toolkit=3.0.36=hd3eb1b0_0
 protego=0.1.16=py_0
+protobuf=4.21.12=pypi_0
 psutil=5.9.0=py311h2bbff1b_0
 ptyprocess=0.7.0=pyhd3eb1b0_2
 pure_eval=0.2.2=pyhd3eb1b0_0
@@ -338,6 +340,7 @@ pytables=3.8.0=py311ha4dc190_2
 pytest=7.4.0=py311haa95532_0
 python=3.11.4=h966fe2a_0
 python-dateutil=2.8.2=pyhd3eb1b0_0
+python-dotenv=1.0.0=pypi_0
 python-fastjsonschema=2.16.2=py311haa95532_0
 python-json-logger=2.0.7=py311haa95532_0
 python-libarchive-c=2.9=pyhd3eb1b0_1
