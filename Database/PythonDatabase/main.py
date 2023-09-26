@@ -142,17 +142,28 @@ class Database:
             self.perror(err)
             return None
 
-    def select_person_with(self, id=None, name=None):
-        """
-        Select person with specific person_id OR/AND with specific name
+    def select_with(self,table_name, personal_id=None, name=None,system_id=None,buisness_name=None):
 
-        With no params, returns all rows from person table
-        :param id: String
+        """
+        Select table with contrains
+
+        With no params, returns all rows from selected table
+        :param table_name: String
+        :param personal_id: String
         :param name: String
+        :param system_id: String
+        :param buisness_name: String
         :return: [tuples]
         """
-        query = "SELECT * FROM person"
-        conditions = {"person_name= %s": name, "person_id= %s": id}
+        query = f"SELECT * FROM {table_name}"
+
+        if table_name=="person":
+            conditions = {"person_name= %s": name, "person_id= %s": personal_id}
+        elif table_name=="customer":
+            conditions={"system_id= %s":system_id,"buisness_name=":buisness_name}
+        elif table_name=="employee":
+            conditions={"system_id= %s":system_id}
+
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
         if res is None:
@@ -166,7 +177,7 @@ if __name__ == "__main__":
     DBhelpful = Database()
 
     DBhelpful.insert_customer("1234","Dovi","Dovrat@Dogmail.com","4321","Waf waf")
-    for x in DBhelpful.select_person_with():
+    for x in DBhelpful.select_with("customer"):
         print (x)
 
 
