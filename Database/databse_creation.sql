@@ -55,5 +55,4 @@ CREATE TABLE employee_board(
             		foreign key(board_id) references board (system_id)
 	);
     
-
-            
+insert into _role values (1,"admin"),(2,"team_manager"),(3,"employee")
