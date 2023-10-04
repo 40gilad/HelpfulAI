@@ -5,7 +5,8 @@ _anaconda_depends=2023.07=py311_1
 abseil-cpp=20211102.0=hd77b12b_0
 aiobotocore=2.4.2=py311haa95532_0
 aiofiles=22.1.0=py311haa95532_0
-aiohttp=3.8.3=py311h2bbff1b_0
+aiohttp=3.8.5=pypi_0
+aiohttp-retry=2.8.3=pypi_0
 aioitertools=0.7.1=pyhd3eb1b0_0
 aiosignal=1.2.0=pyhd3eb1b0_0
 aiosqlite=0.18.0=py311haa95532_0
@@ -436,6 +437,7 @@ tornado=6.3.2=py311h2bbff1b_0
 tqdm=4.65.0=py311h746a85d_0
 traitlets=5.7.1=py311haa95532_0
 transformers=2.1.1=pyhd3eb1b0_0
+twilio=8.9.0=pypi_0
 twisted=22.10.0=py311h2bbff1b_0
 twisted-iocpsupport=1.0.2=py311h2bbff1b_0
 typing-extensions=4.7.1=py311haa95532_0
