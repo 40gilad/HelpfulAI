@@ -22,15 +22,15 @@ class Database:
         print(Style.RESET_ALL)
 
     def format_select_query(self, query, params={None}):
-        query_conditions=[]
-        query_params=[]
-        for key,val in params.items():
+        query_conditions = []
+        query_params = []
+        for key, val in params.items():
             if val is not None:
                 query_conditions.append(key)
                 query_params.append(val)
         if query_conditions:
             query += " WHERE " + " AND ".join(query_conditions)
-        return [query,query_params]
+        return [query, query_params]
 
     # endregion
 
@@ -62,7 +62,7 @@ class Database:
 
     # endregion
 
-    #region __init__ , close_connection Functions
+    # region __init__ , close_connection Functions
 
     def __init__(self):
         """
@@ -82,12 +82,13 @@ class Database:
         try:
             self.cursor.close()
             self.db.close()
+            self.psuccess(f"Connection to DB closed")
             return True
         except Exception as err:
             self.perror(err)
             return False
 
-    #endregion
+    # endregion
 
     # region Insertions to DB Functions
 
@@ -124,14 +125,14 @@ class Database:
     def insert_customer(self, _id, name, email, phone, buisness_name):
         self.insert_person(_id, name, email, phone)
         query = ("INSERT INTO customer(system_id, buisness_name) "
-                   "SELECT "
-                   "(SELECT system_id FROM person WHERE person_id = %s), %s")
+                 "SELECT "
+                 "(SELECT system_id FROM person WHERE person_id = %s), %s")
         params = (_id, buisness_name)
         self.execute_insertion(query, params)
 
     # endregion
 
-    #region Read
+    # region Read
 
     def execute_selection(self, query, params=None):
         try:
@@ -142,7 +143,7 @@ class Database:
             self.perror(err)
             return None
 
-    def select_with(self,table_name, personal_id=None, name=None,system_id=None,buisness_name=None):
+    def select_with(self, table_name, personal_id=None, name=None, system_id=None, buisness_name=None):
 
         """
         Select table with contrains
@@ -157,12 +158,12 @@ class Database:
         """
         query = f"SELECT * FROM {table_name}"
 
-        if table_name=="person":
+        if table_name == "person":
             conditions = {"person_name= %s": name, "person_id= %s": personal_id}
-        elif table_name=="customer":
-            conditions={"system_id= %s":system_id,"buisness_name=":buisness_name}
-        elif table_name=="employee":
-            conditions={"system_id= %s":system_id}
+        elif table_name == "customer":
+            conditions = {"system_id= %s": system_id, "buisness_name=": buisness_name}
+        elif table_name == "employee":
+            conditions = {"system_id= %s": system_id}
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -171,17 +172,13 @@ class Database:
             return None
         return res
 
-    #endregion
+    # endregion
+
 
 if __name__ == "__main__":
     DBhelpful = Database()
+    for x in DBhelpful.select_with("employee", personal_id="313416562"):
+        print(x)
 
-    DBhelpful.insert_customer("1234","Dovi","Dovrat@Dogmail.com","4321","Waf waf")
-    for x in DBhelpful.select_with("customer"):
-        print (x)
-
-
-
-    if(DBhelpful. close_connection()==False):
-        raise Exception ("Database was not close properly. some changes may be gone")
-
+    if (DBhelpful.close_connection() == False):
+        raise Exception("Database was not close properly. some changes may be gone")
