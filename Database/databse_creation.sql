@@ -11,14 +11,6 @@ CREATE TABLE person(
             unique  (system_id)
     );
     
-    
-CREATE TABLE customer(
-			system_id int,
-			buisness_name varchar(50),
-			
-			primary key (system_id),
-			foreign key (system_id) references person(system_id)
-    );
    
 CREATE TABLE _role(
 			role_id int,
@@ -30,11 +22,32 @@ CREATE TABLE _role(
 CREATE TABLE employee(
 			system_id int,
 			premission int NOT NULL,
+			status int NOT NULL,
 			
 			primary key (system_id),
 			foreign key (system_id) references person(system_id),
 			foreign key (premission) references _role(role_id)
     );
+ 
+CREATE TABLE customer(
+			system_id int,
+			buisness_name varchar(50),
+			employee_id int NOT NULL,
+			backup_id int,
+			leader_id int NOT NULL,
+			status int NOT NULL,
+			
+			
+			primary key (system_id),
+			foreign key (employee_id) references employee(system_id),
+			foreign key (backup_id) references employee(system_id),
+			foreign key (leader_id) references employee(system_id)
+
+    );
+   
+
+
+
     
 CREATE TABLE board(
 			system_id int NOT NULL auto_increment,
@@ -47,7 +60,7 @@ CREATE TABLE board(
 	);
     
 CREATE TABLE employee_board(
-					employee_id int,
+			employee_id int,
             		board_id int,
             
             		primary key(employee_id,board_id),
@@ -55,4 +68,4 @@ CREATE TABLE employee_board(
             		foreign key(board_id) references board (system_id)
 	);
     
-insert into _role values (1,"admin"),(2,"team_manager"),(3,"employee")
+insert into _role values (1,"admin"),(2,"team_leader"),(3,"employee")
