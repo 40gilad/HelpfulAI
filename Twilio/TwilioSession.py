@@ -26,14 +26,16 @@ class SessionManager:
         self.sessions = {}
 
     def create_session(self, phone_number):
-        session = Session(phone_number)
-        self.sessions[phone_number] = session
-        print(f'new session: {session}')
+        session = self.get_session(phone_number)
+        if session is None:
+            session = Session(phone_number)
+            self.sessions[phone_number] = session
+            print(f'new session: {session}')
         return session
 
     def get_session(self, phone_number):
         if phone_number in self.sessions:
-            return self.sessions[phone_number].session
+            return self.sessions[phone_number]
         else:
             return None
 
