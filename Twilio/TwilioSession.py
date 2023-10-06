@@ -2,24 +2,19 @@ import json
 
 class Session:
     def __init__(self, phone_number, stage=0):
-        session_key=self.create_session_key()
-        self.phone_number = phone_number
-        self.session_key = session_key
-        self.stage = stage
+        self.session={}
+        self.session[phone_number] = phone_number
+        self.session["stage"] = stage
 
     def to_json(self):
         return json.dumps({
             'phone_number': self.phone_number,
-            'session_key': self.session_key,
             'stage': self.stage
         })
 
-    def create_session_key(self):
-        s="12345"
-        return s
 
     def inc_stage(self):
-        self.stage+=1
+        self.session["stage"]+=1
 
     @staticmethod
     def from_json(json_string):
@@ -38,7 +33,7 @@ class SessionManager:
 
     def get_session(self, phone_number):
         if phone_number in self.sessions:
-            return self.sessions[phone_number]
+            return self.sessions[phone_number].session
         else:
             return None
 
@@ -52,4 +47,15 @@ class SessionManager:
                 session.inc_stage()
 
 
-    def get_stage(self, session):
+    #def get_stage(self, session):
+
+if __name__=="__main__":
+    print("kaki")
+    s=SessionManager()
+    a=s.create_session("12345")
+    b=s.create_session("54321")
+    c=s.inc_stage("12345")
+    d=s.get_session("12345")
+    e=s.get_session("54321")
+    x=1
+
