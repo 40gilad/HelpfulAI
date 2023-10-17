@@ -2,9 +2,9 @@ import json
 
 class Session:
     def __init__(self, phone_number, stage=0):
-        self.session={}
-        self.session[phone_number] = phone_number
-        self.session["stage"] = stage
+        self.Json_session={}
+        self.Json_session[phone_number] = phone_number
+        self.Json_session["stage"] = stage
 
     def to_json(self):
         return json.dumps({
@@ -14,7 +14,11 @@ class Session:
 
 
     def inc_stage(self):
-        self.session["stage"]+=1
+        self.Json_session["stage"]+=1
+        kaki=1
+
+    def get_stage(self):
+        return self.Json_session["stage"]
 
     @staticmethod
     def from_json(json_string):
