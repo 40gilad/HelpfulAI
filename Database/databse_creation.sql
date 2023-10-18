@@ -8,7 +8,9 @@ CREATE TABLE person(
 			phone varchar(10) NOT NULL,
 			
 			primary key (person_id),
-            unique  (system_id)
+            		unique  (system_id),
+			unique (phone)
+		
     );
     
    
@@ -21,8 +23,8 @@ CREATE TABLE _role(
 
 CREATE TABLE employee(
 			system_id int,
-			premission int NOT NULL,
-			status int NOT NULL,
+			premission int NOT NULL DEFAULT 0,
+			status int NOT NULL DEFAULT 1,
 			
 			primary key (system_id),
 			foreign key (system_id) references person(system_id),

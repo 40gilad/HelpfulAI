@@ -32,6 +32,25 @@ class Database:
             query += " WHERE " + " AND ".join(query_conditions)
         return [query, query_params]
 
+    def format_phone(self,phone_number):
+        """Formats a phone number to start with `0` if it starts with `+972`.
+
+        Args:
+          phone_number: A string representing a phone number.
+
+        Returns:
+          A string representing the formatted phone number.
+        """
+
+        # Remove any whitespace or hyphens from the phone number.
+        phone_number=phone_number.strip().replace('-', '').replace(' ', '')
+        # If the phone number starts with `+972`, remove the `+` and prepend a `0`.
+        if phone_number.startswith('+972'):
+            phone_number = phone_number[4:]
+            phone_number = '0' + phone_number
+
+        return phone_number
+
     # endregion
 
     # region FUNCTIONS: load_environment, connect_to_db
@@ -64,14 +83,19 @@ class Database:
 
     # region __init__ , close_connection Functions
 
-    def __init__(self):
+    def __init__(self,is_qa=None):
         """
         Connect to database according to .env file variables.
 
         Saves database connection as a class variable.
 
+        is_qa: Variable Which indicates on QA for running the DBmain.py file. None for regular run
+
         """
-        self.db = self.connect_to_db(*self.load_environment())
+        if(not is_qa):
+            self.db = self.connect_to_db(*self.load_environment())
+        elif (is_qa):
+            self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
         if self.db == None:
             self.perror("Error connecting to Helpful database")
         else:
@@ -143,13 +167,14 @@ class Database:
             self.perror(err)
             return None
 
-    def select_with(self, table_name, personal_id=None, name=None, system_id=None, buisness_name=None):
+    def select_with(self, table_name,phone=None, personal_id=None, name=None, system_id=None, buisness_name=None):
 
         """
         Select table with contrains
 
         With no params, returns all rows from selected table
         :param table_name: String
+        :param phone: String
         :param personal_id: String
         :param name: String
         :param system_id: String
@@ -159,7 +184,7 @@ class Database:
         query = f"SELECT * FROM {table_name}"
 
         if table_name == "person":
-            conditions = {"person_name= %s": name, "person_id= %s": personal_id}
+            conditions = {"person_name= %s": name, "phone= %s": phone}
         elif table_name == "customer":
             conditions = {"system_id= %s": system_id, "buisness_name=": buisness_name}
         elif table_name == "employee":
@@ -172,12 +197,36 @@ class Database:
             return None
         return res
 
+    def get_system_id(self,phone_number):
+        row=self.select_with("person",phone=phone_number)
+        if row == []:
+            return -1
+        else:
+            return row[0][0]
+
     # endregion
 
+    #region Update
 
+    #endregion
+
+    #region Chatbot - Database middleman
+
+    def get_premission(self,phone_number):
+        return self.get_system_id(self.format_phone(phone_number))
+
+
+    #endregion
+
+        """
+
+        :param string phone_number:
+        :return: 1-CEO , 2-Team Manager , 3- Employee
+        """
 if __name__ == "__main__":
-    DBhelpful = Database()
-    DBhelpful.insert_employee("314010142","Azama Bagatov","AB@borat.com","01010101")
+    DBhelpful = Database(is_qa=1)
+    #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
+    print(DBhelpful.get_premission("0526263862"))
     for x in DBhelpful.select_with("employee", system_id="14"):
         print(x)
 
