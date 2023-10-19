@@ -13,9 +13,12 @@ class Session:
         })
 
 
-    def inc_stage(self):
-        self.Json_session["stage"]+=1
-        kaki=1
+    def inc_stage(self,stage=None):
+        if stage is None:
+            self.Json_session["stage"]+=1
+        else:
+            self.Json_session["stage"] = stage
+
 
     def get_stage(self):
         return self.Json_session["stage"]
@@ -47,10 +50,11 @@ class SessionManager:
         if phone_number in self.sessions:
             del self.sessions[phone_number]
 
-    def inc_stage(self, phone):
-        for p, session in self.sessions.items():
-            if p == phone:
-                session.inc_stage()
+    def save_sessions(self):
+        sessions_json = json.dumps(self.sessions)
+        with open('sessions.json', 'w') as f:
+            f.write(sessions_json)
+
 
 
     #def get_stage(self, session):
