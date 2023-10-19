@@ -7,6 +7,8 @@ from twilio.rest import Client
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse, Message
 import TwilioSession as ts
+admin_session_dict={"SendMenu":0,"GetMenuAnswer":1,"GetEmployeeName":2,"GetEmployeeId":3,"GetEmployeeName":4,
+                    "GetEmployeePhone":5,"GetEmployeeRole":6}
 
 #region Globals
 
@@ -26,13 +28,17 @@ def send_msg(_to,_body,_from="whatsapp:+14155238886"):
 
 #region premission handlers
 
-def handle_admin(response,recieved,sender_phone_number,session_stage):
-    if session_stage==0:
+def handle_admin(response,recieved,sender_phone_number,session_stage,curr_session):
+    if session_stage==admin_session_dict["SendMenu"]: # need to send menu
         send_menu(1,phone_number)
-    if session_stage ==1: #got menu answer
+        curr_session.inc_stage()
+        #    def insert_employee(self, _id, name, email, phone, role="employee"):
+    elif session_stage ==admin_session_dict["GetMenuAnswer"]: #got menu answer
         if recieved == '1':
             send_msg(sender_phone_number,"What is the employees full name?")
-            #inc session
+            curr_session.inc_stage(admin_session_dict["GetEmployeeName"])
+    elif session_stage==admin_session_dict["GetEmployeeName"]:
+
 
 
 def handle_team_maneger(response,recieved,sender_phone_number,session_stage):
@@ -53,13 +59,13 @@ def send_menu(premission,phone_number):
     elif premission == 3:
         send_msg(phone_number,"Employee menu")
 
-def run_conversation(response,recieved,sender_phone_number,premission,session_stage):
+def run_conversation(response,recieved,sender_phone_number,premission,session_stage,curr_session):
     if premission==1:
-        handle_admin(response,recieved,sender_phone_number,session_stage)
+        handle_admin(response,recieved,sender_phone_number,session_stage,curr_session)
     if premission==2:
-        handle_team_maneger(response,recieved,sender_phone_number,session_stage)
+        handle_team_maneger(response,recieved,sender_phone_number,session_stage,curr_session)
     if premission==3:
-        handle_employee(response,recieved,sender_phone_number,session_stage)
+        handle_employee(response,recieved,sender_phone_number,session_stage,curr_session)
 
 
 def handle_income_msg(response,recieved,sender_phone_number):
@@ -72,7 +78,7 @@ def handle_income_msg(response,recieved,sender_phone_number):
         if curr_session is None:
             curr_session = session_manager.create_session(sender_phone_number)
         session_stage = curr_session.get_stage()
-        run_conversation(response,recieved,sender_phone_number,premission,session_stage)
+        run_conversation(response,recieved,sender_phone_number,premission,session_stage,curr_session)
             #send_msg(sender_phone_number,"Session started")
 
 
@@ -84,21 +90,9 @@ def wa_reply():
     sender_phone_number = request.form.get('From')
     handle_income_msg(resp,msg_received,sender_phone_number)
 
-"""
-    else: #phone number validated and during session
-        if session_stage == 0:
-            send_msg(sender_phone_number,"Hi! you are on stage 0 of conversation")
-            curr_session.inc_stage()
-        elif session_stage == 1:
-            send_msg(sender_phone_number,"Stage 1!")
-            curr_session.inc_stage()
-            """
 
 
 if __name__ == "__main__":
-    #kaki=hdb.select_with("employee", personal_id="313416562")
-    for x in hdb.select_with("employee"):
-        print(x)
     load_dotenv(dotenv_path='Twilio.env')
     account_sid = os.getenv('SID')
     auth_token = os.getenv('TOKEN')
