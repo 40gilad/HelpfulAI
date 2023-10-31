@@ -23,7 +23,7 @@ CREATE TABLE _role(
 
 CREATE TABLE employee(
 			system_id int,
-			premission int NOT NULL DEFAULT 0,
+			premission int NOT NULL,
 			status int NOT NULL DEFAULT 1,
 			
 			primary key (system_id),

@@ -43,7 +43,7 @@ class Database:
         """
 
         # Remove any whitespace or hyphens from the phone number.
-        phone_number=phone_number.strip().replace('-', '').replace(' ', '')
+        phone_number=phone_number.strip().replace('whatsapp:','').replace('-', '').replace(' ', '')
         # If the phone number starts with `+972`, remove the `+` and prepend a `0`.
         if phone_number.startswith('+972'):
             phone_number = phone_number[4:]
