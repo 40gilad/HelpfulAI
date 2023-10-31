@@ -1,9 +1,10 @@
 import json
+import csv
 
 class Session:
     def __init__(self, phone_number, stage=0):
         self.Json_session={}
-        self.Json_session[phone_number] = phone_number
+        self.Json_session['phone_number'] = phone_number
         self.Json_session["stage"] = stage
 
     def to_json(self):
@@ -30,34 +31,58 @@ class Session:
 
 class SessionManager:
     def __init__(self):
-        self.sessions = {}
+        self.sessions = []
+        self.load_sessions()
 
     def create_session(self, phone_number):
         session = self.get_session(phone_number)
         if session is None:
             session = Session(phone_number)
-            self.sessions[phone_number] = session
-            print(f'new session: {session}')
+            self.sessions.append(session)
+            self.save_sessions()
+            print(f'new session: {session.Json_session}')
         return session
 
     def get_session(self, phone_number):
-        if phone_number in self.sessions:
-            return self.sessions[phone_number]
+        for sess in self.sessions:
+            if sess.Json_session['phone_number'] == phone_number:
+                return sess
         else:
             return None
 
-    def remove_session(self, phone_number):
-        if phone_number in self.sessions:
-            del self.sessions[phone_number]
+
+    def inc_stage(self, phone_number,stage=None):
+        session = self.get_session(phone_number)
+        if session is not None:
+            if stage is None:
+                session.inc_stage()
+            else:
+                session.inc_stage(stage)
+            self.save_sessions()
+
 
     def save_sessions(self):
-        sessions_json = json.dumps(self.sessions)
-        with open('sessions.json', 'w') as f:
-            f.write(sessions_json)
+        with open('sessions.csv', 'w', newline='') as f:
+            writer = csv.writer(f)
+            for kaki in self.sessions:
+                writer.writerow([kaki.Json_session['phone_number'], kaki.Json_session['stage']])
+
+    def load_sessions(self):
+        try:
+            with open('sessions.csv', 'r', newline='') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    phone_number, stage = row
+                    session = Session(phone_number, stage)
+                    self.sessions.append(session)
+        except FileNotFoundError:
+            print('Creating new sessions.csv file...')
+            with open('sessions.csv', 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['phone_number', 'stage'])
 
 
 
-    #def get_stage(self, session):
 
 if __name__=="__main__":
     print("kaki")
