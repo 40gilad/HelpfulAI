@@ -126,6 +126,7 @@ class Database:
             self.perror(err)
             return False
 
+
     def insert_board(self):
         print("insert_board")
 
@@ -154,6 +155,10 @@ class Database:
         params = (_id, buisness_name)
         self.execute_insertion(query, params)
 
+    def insert_message(self,msg_id,conv_id,quoted_phone,quoter_phone,msg):
+        query=("INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content) VALUES (%s,%s,%s,%s,%s)")
+        params=(msg_id,conv_id,quoted_phone,quoter_phone,msg)
+        self.execute_insertion(query,params)
     # endregion
 
     # region Read
@@ -167,7 +172,7 @@ class Database:
             self.perror(err)
             return None
 
-    def select_with(self, table_name,phone=None, personal_id=None, name=None, system_id=None, buisness_name=None):
+    def select_with(self, table_name,phone=None, personal_id=None, name=None, system_id=None, buisness_name=None,conv_id=None):
 
         """
         Select table with contrains
@@ -189,6 +194,8 @@ class Database:
             conditions = {"system_id= %s": system_id, "buisness_name=": buisness_name}
         elif table_name == "employee":
             conditions = {"system_id= %s": system_id}
+        elif table_name=="conversations":
+            conditions = {"conv_id= %s":conv_id}
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -204,31 +211,48 @@ class Database:
         else:
             return row[0][0]
 
+    def get_employees_from_conv(self,conv_id):
+        row=self.select_with("conversations",conv_id=conv_id)
+        if row == []:
+            return -1
+        else:
+            return row[0][3:]
+
+    def get_customer_from_conv(self,conv_id):
+        row=self.select_with("conversations",conv_id=conv_id)
+        if row == []:
+            return -1
+        else:
+            return row[0][2]
+
+    def get_conv_name(self,conv_id):
+        row=self.select_with("conversations",conv_id=conv_id)
+        if row == []:
+            return -1
+        else:
+            return row[0][1]
+
     # endregion
 
     #region Update
 
     #endregion
 
-    #region Chatbot - Database middleman
+
 
     def get_premission(self,phone_number):
         return self.get_system_id(self.format_phone(phone_number))
 
 
-    #endregion
 
-        """
 
-        :param string phone_number:
-        :return: 1-CEO , 2-Team Manager , 3- Employee
-        """
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
+    """
     #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
     print(DBhelpful.get_premission("0526263862"))
     for x in DBhelpful.select_with("employee", system_id="14"):
         print(x)
-
+        """
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
