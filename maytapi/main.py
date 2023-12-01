@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
 
-app = Flask(__name__)
+#region Globals and initializations
 
+app = Flask(__name__)
 load_dotenv(dotenv_path='Maytapi.env')
 INSTANCE_URL = "https://api.maytapi.com/api"
 PRODUCT_ID =os.getenv("PRODUCT_ID")
@@ -18,24 +19,9 @@ TRIAL_GROUP_ID=os.getenv("GROUP_ID")
 ANGEL_SIGN=os.getenv("ACK_SIGN").split(',')
 hdb = Database.Database()
 
+#endregion
 
-
-def getCatalog():
-    url = INSTANCE_URL + "/" + PRODUCT_ID + "/" + PHONE_ID + "/catalog"
-    payload = {}
-    headers = {
-        "Content-Type": "application/json",
-        "x-maytapi-key": API_TOKEN,
-    }
-    r = requests.request('GET', url, headers=headers, data=payload)
-    tjson = r.json()
-    pData = tjson["data"]
-    pSuccess = tjson["success"]
-    if pSuccess == True and len(pData) > 0:
-        pId = tjson["data"][0]["productId"]
-        return pId
-    else:
-        return 0
+#region Support functions
 
 
 def format_phone_for_selection(phone_number):
@@ -52,6 +38,7 @@ def format_phone_for_selection(phone_number):
 
     return phone_number
 
+
 def is_angel(phone_number,group_id=None):
     if group_id is None:
         return False
@@ -61,6 +48,7 @@ def is_angel(phone_number,group_id=None):
             and sys_id in hdb.get_employees_from_conv(group_id): # employee in group with premission
         return True
     return False
+
 
 def is_customer(phone_number,group_id=None):
     if group_id is None:
@@ -82,6 +70,9 @@ def send_response(body):
     response = requests.post(url, json=body, headers=headers)
     print("Response", response.json(), file=sys.stdout, flush=True)
     return
+
+
+#endregion
 
 
 @app.route("/", methods=["POST"])
