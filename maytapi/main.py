@@ -4,17 +4,19 @@ import sys
 import base64
 import os
 from dotenv import load_dotenv
-
+sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
+from HelpfulAI.Database.PythonDatabase import DBmain as Database
 
 app = Flask(__name__)
 
-load_dotenv(dotenv_path='Twilio.env')
+load_dotenv(dotenv_path='Maytapi.env')
 INSTANCE_URL = "https://api.maytapi.com/api"
 PRODUCT_ID =os.getenv("PRODUCT_ID")
 PHONE_ID = os.getenv("PHONE_ID")
 API_TOKEN = os.getenv("TOKEN")
 TRIAL_GROUP_ID=os.getenv("GROUP_ID")
-
+ANGEL_SIGN=os.getenv("ACK_SIGN").split(',')
+hdb = Database.Database()
 
 
 
@@ -36,6 +38,40 @@ def getCatalog():
         return 0
 
 
+def format_phone_for_selection(phone_number):
+    # Remove leading '+' if present
+    phone_number = phone_number.lstrip('+')
+
+    # Check if the number starts with '972' and remove it
+    if phone_number.startswith('972'):
+        phone_number = phone_number[3:]
+
+    # Check if the number starts with '0', if not, add '0' at the beginning
+    if not phone_number.startswith('0'):
+        phone_number = '0' + phone_number
+
+    return phone_number
+
+def is_angel(phone_number,group_id=None):
+    if group_id is None:
+        return False
+    formatted_phone=format_phone_for_selection(phone_number)
+    sys_id=hdb.get_system_id(formatted_phone)
+    if hdb.get_premission(formatted_phone)>=1 \
+            and sys_id in hdb.get_employees_from_conv(group_id): # employee in group with premission
+        return True
+    return False
+
+def is_customer(phone_number,group_id=None):
+    if group_id is None:
+        return False
+    formatted_phone=format_phone_for_selection(phone_number)
+    sys_id=hdb.get_system_id(formatted_phone)
+    if sys_id == hdb.get_customer_from_conv(group_id): # customer is in conversation
+        return True
+    return False
+
+
 def send_response(body):
     print("Request Body", body, file=sys.stdout, flush=True)
     url = INSTANCE_URL + "/" + PRODUCT_ID + "/" + PHONE_ID + "/sendMessage"
@@ -55,103 +91,18 @@ def webhook():
     wttype = json_data["type"]
     if wttype == "message":
         message = json_data["message"]
-        conversation = json_data["conversation"]
         _type = message["type"]
         if message["fromMe"]:
             return
-        if _type == "text":
-            # Handle Messages
-            text = message["text"]
-            text = text.lower()
-            if text == "media":
-                body = {
-                    "type": "media",
-                    "text": "Image Response",
-                    "message": "https://via.placeholder.com/140x100",
-                }
-            elif text == "media64":
-                with open("maytapi.jpg", "rb") as img_file:
-                    b64_string = base64.b64encode(img_file.read())
-                firstStr = "data:image/jpeg;base64,"
-                formatImg = b64_string.decode('utf-8')
-                fullDataImg = firstStr+formatImg
-                body = {
-                    "type": "image",
-                    "text": "image Response",
-                    "message": fullDataImg
-                }
-            elif text == "location":
-                body = {
-                    "type": "location",
-                    "text": "Location Response",
-                    "latitude": "41.093292",
-                    "longitude": "29.061737",
-                }
-            elif text == "link":
-                body = {
-                    "type": "link",
-                    "message": "https://maytapi.com/",
-                }
-            elif text == "contact":
-                body = {
-                    "type": "contact",
-                    "message": "905301234567@c.us",
-                }
-            elif text == "vcard":
-                body = {
-                    "type": "vcard",
-                    "message": {
-                        "displayName": "John Doe",
-                        "vcard": "BEGIN:VCARD\nVERSION:3.0\nFN;CHARSET=UTF-8:John Doe\nN;CHARSET=UTF-8:;John;Doe;;\nTEL;TYPE=CELL:+9051234567\nREV:2020-01-23T11:09:14.782Z\nEND:VCARD",
-                    },
-                }
-            elif text == "filedoc":
-                body = {
-                    "type": "media",
-                    "message": "https://file-examples-com.github.io/uploads/2017/02/file-sample_100kB.doc",
-                }
-            elif text == "filepdf":
-                body = {
-                    "type": "media",
-                    "message": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-                }
-            elif text == "reply":
-                rpyto = json_data["message"]["_serialized"]
-                body = {
-                    "type": "text",
-                    "message": "This is reply text",
-                    "reply_to": rpyto
-                }
-            elif text == "product":
-                productIdTake = getCatalog()
-                if productIdTake == 0:
-                    body = {
-                        "type": "text",
-                        "message": "You don't have a any product"
-                    }
-                else:
-                    body = {
-                        "type": "product",
-                        "productId": productIdTake
-                    }
-            else:
-                body = {"type": "text", "message": "Echo - " + text}
-            body.update({"to_number": conversation})
-            send_response(body)
-    elif wttype == "status":
-        stype =  json_data["type"]
-        spid =  json_data["pid"]
-        sphoneid =  json_data["phone_id"]
-        sStatus =  json_data["status"]
-        print("Status of instance ", sphoneid, " changed to ", sStatus)
-    elif wttype == "ack":
-        ackType =  json_data["type"]
-        ackProductId =  json_data["product_id"]
-        ackData =  json_data["data"]
-        acty = ackData[0]
-        acmsgId = ackData[0]
-        print("your message with id ",
-              acmsgId["msgId"], " was ", acty["ackType"])
+        if _type == "text" and 'quoted' in json_data:
+            group_id=json_data["conversation"]
+            angel_phone=json_data["user"]["phone"]
+            customer_phone=json_data["quoted"]["user"]["phone"]
+            if message['text'] in ANGEL_SIGN: # if msg is ack sign
+                if is_angel(angel_phone,group_id): #quoter is angel from the relevant group with premission
+                    if is_customer(customer_phone,group_id): #quoted is customer of the relevant group
+                        hdb.insert_message(json_data["quoted"]["id"],group_id,customer_phone,angel_phone,json_data["quoted"]["text"])
+
     else:
         print("Unknow Type:", wttype,  file=sys.stdout, flush=True)
     return jsonify({"success": True}), 200
@@ -159,21 +110,16 @@ def webhook():
 
 
 if __name__=='__main__':
+        app.run()
 
+
+        """
+        
         body = {
-            "type": "buttons",
-            "message": "try buttons",
+            "type": "reaction",
+            "message": "😀",
             "to_number": '',
-            "buttons":[
-            {
-                "id":"button1",
-                "text":"text button 1"
-            },
-            {
-                "id": "button2",
-                "text": "text button 2"
-            }
-        ]
+            "reply_to":""
         }
         print("Request Body", body, file=sys.stdout, flush=True)
 
@@ -196,4 +142,4 @@ if __name__=='__main__':
         except requests.exceptions.RequestException as err:
             print("Oops! Something went wrong:", err)
         print("okkk?")
-        app.run()
+        """
