@@ -1,38 +1,37 @@
 from flask import Flask, request, jsonify
 import requests
 import sys
-import base64
+import json
 import os
 from dotenv import load_dotenv
 import DBSessionManeger as dbs
+
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
 
-
-#region Globals and initializations
+# region Globals and initializations
 
 app = Flask(__name__)
 load_dotenv(dotenv_path='Maytapi.env')
-INSTANCE_URL = "https://api.maytapi.com/api"
-PRODUCT_ID =os.getenv("PRODUCT_ID")
+PRODUCT_ID = os.getenv("PRODUCT_ID")
 PHONE_ID = os.getenv("PHONE_ID")
 API_TOKEN = os.getenv("TOKEN")
-TRIAL_GROUP_ID=os.getenv("GROUP_ID")
-ANGEL_SIGN=os.getenv("ACK_SIGN").split(',')
-private_chat_type='c'
-group_chat_type='g'
+TRIAL_GROUP_ID = os.getenv("GROUP_ID")
+ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
+ADMIN_SESSION_DICT=json.loads(os.getenv("ADMIN_SESSION_DICT"))
+INSTANCE_URL = os.getenv('INSTANCE_URL')
+
+private_chat_type = 'c'
+group_chat_type = 'g'
 hdb = Database.Database()
-sessions=dbs.get_session()
-
+sessions = dbs.get_session()
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}/sendMessage"
-headers = {
-    "Content-Type": "application/json",
-    "x-maytapi-key": API_TOKEN,
-}
+headers = {"Content-Type": "application/json","x-maytapi-key": API_TOKEN,}
 
-#endregion
 
-#region Support functions
+# endregion
+
+# region Support functions
 
 def send_msg(body):
     print("Request Body", body, file=sys.stdout, flush=True)
@@ -65,44 +64,33 @@ def format_phone_for_selection(phone_number):
         phone_number = '0' + phone_number
 
     if phone_number.endswith('@c.us'):
-        phone_number=phone_number[:10]
+        phone_number = phone_number[:10]
 
     return phone_number
 
 
-def is_angel(phone_number,group_id=None):
+def is_angel(phone_number, group_id=None):
     if group_id is None:
         return False
-    formatted_phone=format_phone_for_selection(phone_number)
-    sys_id=hdb.get_system_id(formatted_phone)
-    if hdb.get_premission(formatted_phone)>=1 \
-            and sys_id in hdb.get_employees_from_conv(group_id): # employee in group with premission
+    formatted_phone = format_phone_for_selection(phone_number)
+    sys_id = hdb.get_system_id(formatted_phone)
+    if hdb.get_premission(formatted_phone) >= 1 \
+            and sys_id in hdb.get_employees_from_conv(group_id):  # employee in group with premission
         return True
     return False
 
 
-def is_customer(phone_number,group_id=None):
+def is_customer(phone_number, group_id=None):
     if group_id is None:
         return False
-    formatted_phone=format_phone_for_selection(phone_number)
-    sys_id=hdb.get_system_id(formatted_phone)
-    if sys_id == hdb.get_customer_from_conv(group_id): # customer is in conversation
+    formatted_phone = format_phone_for_selection(phone_number)
+    sys_id = hdb.get_system_id(formatted_phone)
+    if sys_id == hdb.get_customer_from_conv(group_id):  # customer is in conversation
         return True
     return False
 
 
-def send_response(body):
-    print("Request Body", body, file=sys.stdout, flush=True)
-    url = INSTANCE_URL + "/" + PRODUCT_ID + "/" + PHONE_ID + "/sendMessage"
-    headers = {
-        "Content-Type": "application/json",
-        "x-maytapi-key": API_TOKEN,
-    }
-    response = requests.post(url, json=body, headers=headers)
-    print("Response", response.json(), file=sys.stdout, flush=True)
-    return
-
-def is_angel_ack(txt,e_phone,c_phone,group_id):
+def is_angel_ack(txt, e_phone, c_phone, group_id):
     """
     if msg is ack sign
     AND quoter is angel from the relevant group with premission
@@ -114,9 +102,10 @@ def is_angel_ack(txt,e_phone,c_phone,group_id):
             is_customer(c_phone, group_id):
         return True
 
-#endregion
 
-#region Group chat handlers
+# endregion
+
+# region Group chat handlers
 
 def handle_group_msg(json_data):
     wttype = json_data["type"]
@@ -129,59 +118,98 @@ def handle_group_msg(json_data):
             group_id = json_data["conversation"]
             angel_phone = json_data["user"]["phone"]
             customer_phone = json_data["quoted"]["user"]["phone"]
-            if is_angel_ack(message["text"],angel_phone,customer_phone,group_id):
-                    hdb.insert_message(json_data["quoted"]["id"], group_id, customer_phone, angel_phone,
-                                           json_data["quoted"]["text"])
+            if is_angel_ack(message["text"], angel_phone, customer_phone, group_id):
+                hdb.insert_message(json_data["quoted"]["id"], group_id, customer_phone, angel_phone,
+                                   json_data["quoted"]["text"])
 
-#endregion
 
-#region Private chat handles
+# endregion
 
-def send_private_msg(type,msg,to):
-    if type == "text":
-        body = {
-            "type": "text",
-            "message": msg,
-            "to_number": to
-        }
+# region Private chat handles
+
+def send_private_txt_msg(msg, to):
+    body = {
+        "type": "text",
+        "message": msg,
+        "to_number": to
+    }
     send_msg(body)
 
-def handle_private_msg(json_data):
+
+def handle_income_private_msg(json_data):
     raw_phone_number = json_data['user']['id']
-    sys_id = hdb.get_system_id(format_phone_for_selection(raw_phone_number))
-    if sys_id == -1:
-        sys_id = None
+    formatted_phone_number = format_phone_for_selection(raw_phone_number)
+
+    sys_id = hdb.get_system_id(formatted_phone_number)
     if sys_id is None:
-        send_private_msg("text","You are not in the system",raw_phone_number)
+        send_private_txt_msg("text", "You are not registered in the system! Please contact the system administrator",
+                         raw_phone_number)
         return
-    elif sys_id in sessions:
-        send_private_msg("text", f"Your session stage is {sessions[sys_id]}", raw_phone_number)
-    else:
-        #need to create session
-        print ('create session')
+    elif sys_id not in sessions:
+        # has system ID but no session
+        dbs.create_new_session(sys_id)
+        sessions.append(dbs.get_session(formatted_phone_number))
+
+    ses_stage = sessions[sys_id]
+    ses_permission = hdb.get_premission(formatted_phone_number)
+    run_conversation(ses_stage, ses_permission, raw_phone_number)
+
+
+def run_conversation(ses_stage, permission, raw_phone_number):
+    if permission == 1:
+        handle_admin(ses_stage, raw_phone_number)
+    elif permission == 2:
+        handle_team_maneger(ses_stage, raw_phone_number)
+    elif permission == 3:
+        handle_employee(ses_stage, raw_phone_number)
+
+
+def handle_admin(ses_stage, raw_phone_number):
+    if ses_stage == ADMIN_SESSION_DICT['SendMenu']:
+        send_admin_menu(raw_phone_number)
+    """
+    if recieved == 'Menu' or recieved == 'menu':
+        session_manager.inc_stage(sender_phone_number,admin_session_dict["SendMenu"])
+    if session_stage==admin_session_dict["SendMenu"]: # need to send menu
+        send_menu(1,sender_phone_number)
+        session_manager.inc_stage(sender_phone_number)
+    elif session_stage ==admin_session_dict["GetMenuAnswer"]: #got menu answer
+        if recieved == '1' or session_stage>1 and session_stage<8:
+            admin_insert_employee(sender_phone_number,session_stage,recieved)
+            """
+
+
+def handle_team_maneger(ses_stage, raw_phone_number):
+    pass
+
+
+def handle_employee(ses_stage, raw_phone_number):
+    pass
+
+
+# endregion
+
+#region Menus
+
+def send_admin_menu(raw_phone_number):
+    pass
+
 #endregion
 
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
     if json_data['type'] != 'ack':
-        conv_type=json_data["conversation"].split('@')[1][0]
+        conv_type = json_data["conversation"].split('@')[1][0]
         if conv_type == group_chat_type:
             handle_group_msg(json_data)
         elif conv_type == private_chat_type:
-            handle_private_msg(json_data)
+            handle_income_private_msg(json_data)
 
     else:
-        print("Unknow Message",  file=sys.stdout, flush=True)
+        print("Unknow Message", file=sys.stdout, flush=True)
     return jsonify({"success": True}), 200
 
 
-
-if __name__=='__main__':
-        app.run()
-
-
-        """
-        
-
-        """
+if __name__ == '__main__':
+    app.run()

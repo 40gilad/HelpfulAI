@@ -6,15 +6,10 @@ from HelpfulAI.Database.PythonDatabase import DBmain as Database
 
 hdb = Database.Database()
 
-"""
-def create_session(self, phone_number):
 
-    if session is None:
-        self.sessions.append(session)
-        self.save_sessions()
-        print(f'new session: {session.Json_session}')
-        return session
-"""
+def create_new_session(self, sys_id):
+    hdb.insert_session(sys_id)
+
 def get_session(phone_number=None):
 
     sess = hdb.get_session(phone_number)
