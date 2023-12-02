@@ -155,6 +155,12 @@ class Database:
         query=("INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content) VALUES (%s,%s,%s,%s,%s)")
         params=(msg_id,conv_id,quoted_phone,quoter_phone,msg)
         self.execute_insertion(query,params)
+
+    def insert_session(self,sys_id,stage=0):
+        command = ("INSERT INTO sessions(system_id,stage) VALUES (%d,%d)")
+        params = (sys_id,stage)
+        self.execute_insertion(command, params)
+
     # endregion
 
     # region Read
@@ -204,7 +210,7 @@ class Database:
     def get_system_id(self,phone_number):
         row=self.select_with("person",phone=phone_number)
         if row == []:
-            return -1
+            return None
         else:
             return row[0][0]
 
