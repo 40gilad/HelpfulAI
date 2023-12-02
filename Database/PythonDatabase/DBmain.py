@@ -53,7 +53,27 @@ class Database:
 
     # endregion
 
-    # region FUNCTIONS: load_environment, connect_to_db
+    # region Init, open and close connection
+
+    def __init__(self,is_qa=None):
+        """
+        Connect to database according to .env file variables.
+
+        Saves database connection as a class variable.
+
+        is_qa: Variable Which indicates on QA for running the DBmain.py file. None for regular run
+
+        """
+        if(not is_qa):
+            self.db = self.connect_to_db(*self.load_environment())
+        elif (is_qa):
+            self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
+        if self.db == None:
+            self.perror("Error connecting to Helpful database")
+        else:
+            self.cursor = self.db.cursor()
+            self.psuccess("Helpful database is connected!")
+
     def load_environment(self,path='..\Database\PythonDatabase\DBhelpful.env'):
         try:
             load_dotenv(dotenv_path=path)
@@ -79,29 +99,6 @@ class Database:
             self.perror(err)
             return None
 
-    # endregion
-
-    # region __init__ , close_connection Functions
-
-    def __init__(self,is_qa=None):
-        """
-        Connect to database according to .env file variables.
-
-        Saves database connection as a class variable.
-
-        is_qa: Variable Which indicates on QA for running the DBmain.py file. None for regular run
-
-        """
-        if(not is_qa):
-            self.db = self.connect_to_db(*self.load_environment())
-        elif (is_qa):
-            self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
-        if self.db == None:
-            self.perror("Error connecting to Helpful database")
-        else:
-            self.cursor = self.db.cursor()
-            self.psuccess("Helpful database is connected!")
-
     def close_connection(self):
         try:
             self.cursor.close()
@@ -125,7 +122,6 @@ class Database:
         except mysql.connector.Error as err:
             self.perror(err)
             return False
-
 
     def insert_board(self):
         print("insert_board")
@@ -173,7 +169,6 @@ class Database:
             return None
 
     def select_with(self, table_name,phone=None, personal_id=None, name=None, system_id=None, buisness_name=None,conv_id=None):
-
         """
         Select table with contrains
 
@@ -196,6 +191,8 @@ class Database:
             conditions = {"system_id= %s": system_id}
         elif table_name=="conversations":
             conditions = {"conv_id= %s":conv_id}
+        elif table_name =="sessions":
+            conditions={"system_id= %s":system_id}
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -232,22 +229,34 @@ class Database:
         else:
             return row[0][1]
 
+    def get_premission(self,phone_number):
+        return self.get_system_id(self.format_phone(phone_number))
+
     # endregion
 
     #region Update
 
     #endregion
 
+    #region Session
+    def get_session(self,phone_number=None):
+        if phone_number is None:
+            ses = self.select_with('sessions')
+        else:
+            ses=self.select_with('sessions',system_id=self.get_system_id(phone_number))
+        return ses
+    #endregion
 
 
-    def get_premission(self,phone_number):
-        return self.get_system_id(self.format_phone(phone_number))
 
 
 
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
+    sess=DBhelpful.get_session()
+    kaki=1
+
     """
     #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
     print(DBhelpful.get_premission("0526263862"))

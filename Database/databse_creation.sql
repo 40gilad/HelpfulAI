@@ -69,17 +69,24 @@ CREATE TABLE messages (
 
 			primary key (msg_id,quoter_phone)
 
-);
+	);
 
-/*
 
-*/
+create table sessions(
+			system_id int NOT NULL primary key,
+			stage int NOT NULL DEFAULT 0,
+                        
+                        foreign key (system_id) references person(system_id)
+	);
+
 
 insert into _role values (1,"admin"),(2,"team_leader"),(3,"employee");
 
 insert into person (person_id,person_name,email,phone)
 	values("313416562","Gilad Meir","gilad@helpfulpro.biz","0526263862"),
-	("123456","Yonatan Meir","yona@gmail.com","0528449529");
+	("123456","Yonatan Meir","yona@gmail.com","0528449529"),
+	("1111","Dovi","yossi@waf.com","123456789"),
+	("2222","Maggie","mikky@waf.com","987654321");
 
 insert into employee (system_id,premission)
 	select
@@ -98,6 +105,17 @@ insert into conversations (conv_id,conv_name,customer_id,employee_id)
 
 insert into messages(msg_id,conv_id,quoted_phone,quoter_phone,content)
 	values("1111","2222","987654","3210","manual insrtion from mysql for QA");
+
+
+insert into sessions(system_id)
+	values(1);
+
+
+
+
+
+
+
 
 /*
     
