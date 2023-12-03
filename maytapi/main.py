@@ -5,6 +5,7 @@ import json
 import os
 from dotenv import load_dotenv
 import DBSessionManeger as dbs
+from datetime import datetime
 
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
@@ -18,15 +19,16 @@ PHONE_ID = os.getenv("PHONE_ID")
 API_TOKEN = os.getenv("TOKEN")
 TRIAL_GROUP_ID = os.getenv("GROUP_ID")
 ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
-ADMIN_SESSION_DICT=json.loads(os.getenv("ADMIN_SESSION_DICT"))
+ADMIN_SESSION_DICT = json.loads(os.getenv("ADMIN_SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
 
+Tstamp_format="%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
 hdb = Database.Database()
 sessions = dbs.get_session()
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}/sendMessage"
-headers = {"Content-Type": "application/json","x-maytapi-key": API_TOKEN,}
+headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 
 
 # endregion
@@ -53,7 +55,8 @@ def send_msg(body):
 
 def format_phone_for_selection(phone_number):
     # Remove leading '+' if present
-    phone_number = phone_number.lstrip('+')
+    if phone_number.startswith('+'):
+        phone_number = phone_number.lstrip('+')
 
     # Check if the number starts with '972' and remove it
     if phone_number.startswith('972'):
@@ -120,7 +123,7 @@ def handle_group_msg(json_data):
             customer_phone = json_data["quoted"]["user"]["phone"]
             if is_angel_ack(message["text"], angel_phone, customer_phone, group_id):
                 hdb.insert_message(json_data["quoted"]["id"], group_id, customer_phone, angel_phone,
-                                   json_data["quoted"]["text"])
+                                   json_data["quoted"]["text"],json_data["timestamp"])
 
 
 # endregion
@@ -142,8 +145,8 @@ def handle_income_private_msg(json_data):
 
     sys_id = hdb.get_system_id(formatted_phone_number)
     if sys_id is None:
-        send_private_txt_msg("text", "You are not registered in the system! Please contact the system administrator",
-                         raw_phone_number)
+        send_private_txt_msg("You are not registered in the system! Please contact the system administrator",
+                             raw_phone_number)
         return
     elif sys_id not in sessions:
         # has system ID but no session
@@ -156,6 +159,7 @@ def handle_income_private_msg(json_data):
 
 
 def run_conversation(ses_stage, permission, raw_phone_number):
+
     if permission == 1:
         handle_admin(ses_stage, raw_phone_number)
     elif permission == 2:
@@ -186,30 +190,39 @@ def handle_team_maneger(ses_stage, raw_phone_number):
 def handle_employee(ses_stage, raw_phone_number):
     pass
 
+def start_QnA():
+    poll=hdb.get_QnA_dict()
+    for d in poll:
+        emp_phone=format_phone_for_selection(d['emp'])
+        emp_sys_id=hdb.get_system_id(emp_phone)
+        dbs.inc_stage(system_id=emp_sys_id,stage=100)
+        pass
 
 # endregion
 
-#region Menus
+# region Menus
 
 def send_admin_menu(raw_phone_number):
     pass
 
-#endregion
+
+# endregion
 
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
+    json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
     if json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
         if conv_type == group_chat_type:
             handle_group_msg(json_data)
         elif conv_type == private_chat_type:
             handle_income_private_msg(json_data)
-
     else:
         print("Unknow Message", file=sys.stdout, flush=True)
     return jsonify({"success": True}), 200
 
 
 if __name__ == '__main__':
+    start_QnA()
     app.run()

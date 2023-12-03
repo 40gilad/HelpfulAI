@@ -5,10 +5,12 @@ sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
 
 hdb = Database.Database()
-
+sessions=hdb.get_session()
 
 def create_new_session(self, sys_id):
     hdb.insert_session(sys_id)
+    print("need to insert session into sessions dict")
+
 
 def get_session(phone_number=None):
 
@@ -17,6 +19,21 @@ def get_session(phone_number=None):
         return {key: value for key, value in sess}
     return None
 
+def inc_stage(system_id=None,phone_number=None,stage=None):
+    if phone_number is None and system_id is None:
+        raise Exception ("Function must receive system_id or phone_number")
+    sess=get_session(phone_number)
+    if system_id is None:
+        system_id=next(iter(sess))
+    if stage is None:
+        stage=sess[system_id]+1
+    hdb.update_stage(system_id,stage)
+
+
+
+
+
+    hdb
 """
     def inc_stage(self, phone_number,stage=None):
         session = self.get_session(phone_number)
@@ -53,7 +70,7 @@ def get_session(phone_number=None):
 
 if __name__=="__main__":
     print("kaki")
-    s=get_session()
+    inc_stage(system_id=1)
     kaki=1
 
 
