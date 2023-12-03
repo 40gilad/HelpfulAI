@@ -175,7 +175,7 @@ class Database:
             self.perror(err)
             return None
 
-    def select_with(self, table_name, phone=None, personal_id=None, name=None, system_id=None, buisness_name=None,
+    def select_with(self, table_name, phone=None, personal_id=None, name=None, system_id=None,
                     status=None, conv_id=None, col='*', quoted_phone=None, quoter_phone=None):
         """
         Select table with contrains
@@ -195,7 +195,7 @@ class Database:
         if table_name == "person":
             conditions = {"person_name= %s": name, "phone= %s": phone}
         elif table_name == "customer":
-            conditions = {"system_id= %s": system_id, "buisness_name=": buisness_name}
+            conditions = {"system_id= %s": system_id}
         elif table_name == "employee":
             conditions = {"system_id= %s": system_id}
         elif table_name == "conversations":
@@ -254,6 +254,9 @@ class Database:
             poll.append(poll_record)
         return poll
 
+    def get_buisness_name(self,phone_number):
+         return self.select_with(table_name="customer",system_id=self.get_system_id(phone_number),col='buisness_name')[0][0]
+
     # endregion
 
     # region Update
@@ -285,7 +288,7 @@ class Database:
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    z=DBhelpful.select_with('person')
+    z=DBhelpful.get_buisness_name('0528449529')
 
     """
     #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
