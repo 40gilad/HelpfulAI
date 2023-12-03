@@ -66,6 +66,9 @@ CREATE TABLE messages (
     			quoted_phone VARCHAR(20) NOT NULL,
     			quoter_phone VARCHAR(20) NOT NULL,
     			content TEXT,
+    			ack_timestamp VARCHAR(40),
+    			status INT NOT NULL CHECK (status IN (1, 0)) DEFAULT 0,
+
 
 			primary key (msg_id,quoter_phone)
 

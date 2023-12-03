@@ -1,7 +1,7 @@
 import mysql.connector
 import os
 from dotenv import load_dotenv
-from colorama import Fore, Back, Style
+from colorama import Fore, Style
 
 
 class Database:
@@ -32,7 +32,7 @@ class Database:
             query += " WHERE " + " AND ".join(query_conditions)
         return [query, query_params]
 
-    def format_phone(self,phone_number):
+    def format_phone(self, phone_number):
         """Formats a phone number to start with `0` if it starts with `+972`.
 
         Args:
@@ -43,7 +43,7 @@ class Database:
         """
 
         # Remove any whitespace or hyphens from the phone number.
-        phone_number=phone_number.strip().replace('whatsapp:','').replace('-', '').replace(' ', '')
+        phone_number = phone_number.strip().replace('whatsapp:', '').replace('-', '').replace(' ', '')
         # If the phone number starts with `+972`, remove the `+` and prepend a `0`.
         if phone_number.startswith('+972'):
             phone_number = phone_number[4:]
@@ -55,7 +55,7 @@ class Database:
 
     # region Init, open and close connection
 
-    def __init__(self,is_qa=None):
+    def __init__(self, is_qa=None):
         """
         Connect to database according to .env file variables.
 
@@ -64,7 +64,7 @@ class Database:
         is_qa: Variable Which indicates on QA for running the DBmain.py file. None for regular run
 
         """
-        if(not is_qa):
+        if (not is_qa):
             self.db = self.connect_to_db(*self.load_environment())
         elif (is_qa):
             self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
@@ -74,7 +74,7 @@ class Database:
             self.cursor = self.db.cursor()
             self.psuccess("Helpful database is connected!")
 
-    def load_environment(self,path='..\Database\PythonDatabase\DBhelpful.env'):
+    def load_environment(self, path='..\Database\PythonDatabase\DBhelpful.env'):
         try:
             load_dotenv(dotenv_path=path)
             host = os.getenv('HOST')
@@ -151,30 +151,32 @@ class Database:
         params = (_id, buisness_name)
         self.execute_insertion(query, params)
 
-    def insert_message(self,msg_id,conv_id,quoted_phone,quoter_phone,msg):
-        query=("INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content) VALUES (%s,%s,%s,%s,%s)")
-        params=(msg_id,conv_id,quoted_phone,quoter_phone,msg)
-        self.execute_insertion(query,params)
+    def insert_message(self, msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp):
+        query = (
+            "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,timestamp) VALUES (%s,%s,%s,%s,%s,%s)")
+        params = (msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp)
+        self.execute_insertion(query, params)
 
-    def insert_session(self,sys_id,stage=0):
+    def insert_session(self, sys_id, stage=0):
         command = ("INSERT INTO sessions(system_id,stage) VALUES (%d,%d)")
-        params = (sys_id,stage)
+        params = (sys_id, stage)
         self.execute_insertion(command, params)
 
     # endregion
 
     # region Read
 
-    def execute_selection(self, query, params=None):
+    def execute_selection(self, command, params=None):
         try:
-            self.cursor.execute(query, params)
+            self.cursor.execute(command, params)
             self.psuccess("Selection succeed")
             return self.cursor.fetchall()
         except mysql.connector.Error as err:
             self.perror(err)
             return None
 
-    def select_with(self, table_name,phone=None, personal_id=None, name=None, system_id=None, buisness_name=None,conv_id=None):
+    def select_with(self, table_name, phone=None, personal_id=None, name=None, system_id=None, buisness_name=None,
+                    status=None, conv_id=None, col='*', quoted_phone=None, quoter_phone=None):
         """
         Select table with contrains
 
@@ -187,7 +189,8 @@ class Database:
         :param buisness_name: String
         :return: [tuples]
         """
-        query = f"SELECT * FROM {table_name}"
+
+        query = f"SELECT {col} FROM {table_name}"
 
         if table_name == "person":
             conditions = {"person_name= %s": name, "phone= %s": phone}
@@ -195,10 +198,12 @@ class Database:
             conditions = {"system_id= %s": system_id, "buisness_name=": buisness_name}
         elif table_name == "employee":
             conditions = {"system_id= %s": system_id}
-        elif table_name=="conversations":
-            conditions = {"conv_id= %s":conv_id}
-        elif table_name =="sessions":
-            conditions={"system_id= %s":system_id}
+        elif table_name == "conversations":
+            conditions = {"conv_id= %s": conv_id}
+        elif table_name == "sessions":
+            conditions = {"system_id= %s": system_id}
+        elif table_name == "messages":
+            conditions = {"quoted_phone= %s": quoted_phone, "quoter_phone= %s": quoter_phone,"status= %s":status}
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -207,61 +212,80 @@ class Database:
             return None
         return res
 
-    def get_system_id(self,phone_number):
-        row=self.select_with("person",phone=phone_number)
+    def get_system_id(self, phone_number):
+        row = self.select_with("person", phone=phone_number)
         if row == []:
             return None
         else:
             return row[0][0]
 
-    def get_employees_from_conv(self,conv_id):
-        row=self.select_with("conversations",conv_id=conv_id)
+    def get_employees_from_conv(self, conv_id):
+        row = self.select_with("conversations", conv_id=conv_id)
         if row == []:
             return -1
         else:
             return row[0][3:]
 
-    def get_customer_from_conv(self,conv_id):
-        row=self.select_with("conversations",conv_id=conv_id)
+    def get_customer_from_conv(self, conv_id):
+        row = self.select_with("conversations", conv_id=conv_id)
         if row == []:
             return -1
         else:
             return row[0][2]
 
-    def get_conv_name(self,conv_id):
-        row=self.select_with("conversations",conv_id=conv_id)
+    def get_conv_name(self, conv_id):
+        row = self.select_with("conversations", conv_id=conv_id)
         if row == []:
             return -1
         else:
             return row[0][1]
 
-    def get_premission(self,phone_number):
+    def get_premission(self, phone_number):
         return self.get_system_id(self.format_phone(phone_number))
+
+    def get_QnA_dict(self):
+        nums = self.execute_selection(
+            "    select quoted_phone,quoter_phone from messages where status=0 group by quoter_phone,quoted_phone")
+        poll = []
+        for t in nums:
+            customer, emp = t
+            questions = self.select_with("messages", quoter_phone=emp, quoted_phone=customer,status='0', col="content")
+            poll_record = {"emp": emp, "customer": customer, "questions": questions}
+            poll.append(poll_record)
+        return poll
 
     # endregion
 
-    #region Update
+    # region Update
+    def execute_update(self,command,params=None):
+        try:
+            self.cursor.execute(command, params)
+            self.db.commit()
+            self.psuccess("Update succeed")
+            return self.cursor.fetchall()
+        except mysql.connector.Error as err:
+            self.perror(err)
+            return None
 
-    #endregion
+    def update_stage(self,system_id,stage):
+        command=f"update sessions set stage=%s where system_id=%s"
+        params=[stage,system_id]
+        self.execute_update(command,params)
+    # endregion
 
-    #region Session
-    def get_session(self,phone_number=None):
+    # region Session
+    def get_session(self, phone_number=None):
         if phone_number is None:
             ses = self.select_with('sessions')
         else:
-            ses=self.select_with('sessions',system_id=self.get_system_id(phone_number))
+            ses = self.select_with('sessions', system_id=self.get_system_id(phone_number))
         return ses
-    #endregion
-
-
-
-
+    # endregion
 
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    sess=DBhelpful.get_session()
-    kaki=1
+    z=DBhelpful.select_with('person')
 
     """
     #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
@@ -271,3 +295,4 @@ if __name__ == "__main__":
         """
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
+    kaki=1
