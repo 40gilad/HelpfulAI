@@ -29,6 +29,7 @@ hdb = Database.Database()
 sessions = dbs.get_session()
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}/sendMessage"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
+Qpoll = None
 
 
 # endregion
@@ -191,12 +192,24 @@ def handle_employee(ses_stage, raw_phone_number):
     pass
 
 def start_QnA():
-    poll=hdb.get_QnA_dict()
-    for d in poll:
-        emp_phone=format_phone_for_selection(d['emp'])
-        emp_sys_id=hdb.get_system_id(emp_phone)
-        dbs.inc_stage(system_id=emp_sys_id,stage=100)
-        pass
+    global Qpoll;
+    Qpoll= hdb.get_QnA_dict()
+    stage=100
+    for d in Qpoll:
+        emp_phone=d['emp']
+        emp_sys_id=hdb.get_system_id(format_phone_for_selection(emp_phone))
+        dbs.inc_stage(system_id=emp_sys_id,stage=stage)
+    ask_QnA(emp_phone,stage)
+
+def ask_QnA(emp_phone,stage):
+    for d in Qpoll:
+        if d['emp'] == emp_phone:
+            send_QnA(d , stage)
+
+def send_QnA(d,stage):
+    indx=stage-100
+    buisness_name=hdb.get_buisness_name(format_phone_for_selection(d['customer']))
+    send_private_txt_msg(f"for {buisness_name}: {d['questions'][indx][0]}?",d['emp'])
 
 # endregion
 
