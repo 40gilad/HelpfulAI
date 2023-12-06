@@ -191,19 +191,21 @@ class Database:
         """
 
         query = f"SELECT {col} FROM {table_name}"
-
-        if table_name == "person":
-            conditions = {"person_name= %s": name, "phone= %s": phone}
-        elif table_name == "customer":
-            conditions = {"system_id= %s": system_id}
-        elif table_name == "employee":
-            conditions = {"system_id= %s": system_id}
-        elif table_name == "conversations":
-            conditions = {"conv_id= %s": conv_id}
-        elif table_name == "sessions":
-            conditions = {"system_id= %s": system_id}
-        elif table_name == "messages":
-            conditions = {"quoted_phone= %s": quoted_phone, "quoter_phone= %s": quoter_phone,"status= %s":status}
+        conditions={}
+        if name is not None:
+            conditions["person_name= %s"]=name
+        if phone is not None:
+            conditions["phone= %s"]=phone
+        if system_id is not None:
+            conditions["system_id= %s"]= system_id
+        if conv_id is not None:
+            conditions["conv_id= %s"]= conv_id
+        if quoted_phone is not None:
+            conditions["quoted_phone= %s"]= quoted_phone
+        if quoter_phone is not None:
+           conditions["quoter_phone= %s"]= quoter_phone
+        if status is not None:
+            conditions["status= %s"]=status
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -214,7 +216,7 @@ class Database:
 
     def get_system_id(self, phone_number):
         row = self.select_with("person", phone=phone_number)
-        if row == []:
+        if row == None:
             return None
         else:
             return row[0][0]
@@ -239,6 +241,14 @@ class Database:
             return -1
         else:
             return row[0][1]
+
+    def get_employee_name(self,phone_number=None,system_id=None,full_name=False):
+        if system_id is None:
+            system_id=self.get_system_id(phone_number)
+        row = self.select_with(table_name="person",system_id=system_id)
+        if full_name:
+            return row[0][2]
+        return row[0][2].split(' ')[0]
 
     def get_premission(self, phone_number):
         return self.get_system_id(self.format_phone(phone_number))
@@ -276,6 +286,9 @@ class Database:
         self.execute_update(command,params)
     # endregion
 
+    def update_msg_status(self,quoter_number,quoted_number,content,status=1):
+        command=f"update messages set status=%s where quoter_phone=%s and quoted_phone=%s and content=%s"
+        params=[status,quoted_number,quoted_number,content]
     # region Session
     def get_session(self, phone_number=None):
         if phone_number is None:
@@ -288,7 +301,7 @@ class Database:
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    z=DBhelpful.get_buisness_name('0528449529')
+    DBhelpful.get_employee_name(phone_number='0526263862')
 
     """
     #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
