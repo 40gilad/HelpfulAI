@@ -82,6 +82,11 @@ create table sessions(
                         foreign key (system_id) references person(system_id)
 	);
 
+create table daily_answers (
+            msg_id VARCHAR(255) primary key,
+            quoted_phone VARCHAR(12),
+            status INT NOT NULL CHECK (status IN (1, 0)) DEFAULT 0
+    );
 
 insert into _role values (1,"admin"),(2,"team_leader"),(3,"employee");
 

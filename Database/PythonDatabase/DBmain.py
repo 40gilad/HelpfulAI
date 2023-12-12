@@ -126,6 +126,11 @@ class Database:
     def insert_board(self):
         print("insert_board")
 
+    def insrt_daily_msg(self,msg_id,customer_phone,status=0):
+        command="INSERT INTO daily_answers(msg_id,quoted_phone,status) VALUES (%s,%s,%s)"
+        params=[msg_id,customer_phone,status]
+        self.execute_insertion(command,params)
+
     def insert_role(self, r_id, r_name):
         print("is insert role needed? ")
 
@@ -214,6 +219,13 @@ class Database:
             return None
         return res
 
+    def get_daily(self,customer_number):
+        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=1 and d.quoted_phone={customer_number}")
+        if row == None:
+            return None
+        else:
+            return row
+
     def get_system_id(self, phone_number):
         row = self.select_with("person", phone=phone_number)
         if row == None:
@@ -289,9 +301,11 @@ class Database:
         self.execute_update(command,params)
     # endregion
 
-    def update_msg_status(self,quoter_number,quoted_number,content,status=1):
-        command=f"update messages set status=%s where quoter_phone=%s and quoted_phone=%s and content=%s"
-        params=[status,quoted_number,quoted_number,content]
+    def update_msg_status(self,msg_id,status=1):
+        command=f"update messages set status=%s where msg_id=%s"
+        params=[status,msg_id]
+        self.execute_update(command,params)
+
     # region Session
     def get_session(self, phone_number=None):
         if phone_number is None:
@@ -304,7 +318,7 @@ class Database:
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    kaki=DBhelpful.get_QnA_dict()
+    kaki=DBhelpful.get_daily('0528449529')
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
     kaki=1
