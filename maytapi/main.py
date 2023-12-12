@@ -155,31 +155,45 @@ def handle_income_private_msg(json_data):
 
     ses_stage = hdb.get_session(formatted_phone_number)[0][1]
     ses_permission = hdb.get_premission(formatted_phone_number)
-    run_conversation(ses_stage, ses_permission, raw_phone_number, json_data['message']['text'])
+    run_conversation(ses_stage, ses_permission, raw_phone_number, json_data['message']['text'],sys_id)
 
 
-def run_conversation(ses_stage, permission, raw_phone_number,income_msg):
+def run_conversation(ses_stage, permission, raw_phone_number,income_msg,sys_id):
 
     income_msg=income_msg.lower()
     if ses_stage >= 99:
         if income_msg!='yes' and income_msg != 'no':
             send_private_txt_msg('please answer only yes or no')
-        if ses_stage>=100:
-            answerd=pop_question(format_phone_for_selection(phone_number=raw_phone_number),ses_stage)
+            return
+        elif ses_stage==100:
             if income_msg=='yes':
-                pass
+                status=1
             elif income_msg=='no':
-                #leave it 0 in database
-                pass
-        send_next_QnA(raw_phone_number,ses_stage)
+                status=0
+            pop_question(raw_phone_number,ses_stage,status)
+        else:
+            if ses_stage==99:
+                if income_msg == 'yes':
+                    hdb.update_stage(system_id=sys_id,stage=ses_stage+1)
+                elif income_msg == 'no':
+                    return
+        send_next_QnA(raw_phone_number,ses_stage,sys_id)
 
 
-def pop_question(phone_number,ses_stage):
+def pop_question(emp_phone,ses_stage,status):
+    emp_phone = emp_phone.split('@')[0]
+    global Qpoll
     indx=ses_stage-100
     for d in Qpoll:
-        if d['emp']==phone_number:
-            return {'emp':d['emp'],'customer':d['customer'],'question':d['questions'].pop(indx)[0]}
+        if d['emp']==emp_phone:
+            answerd = d['questions'].pop(0)
+            insert_answer(answerd[0],status)
+            return
 
+
+def insert_answer(q_id,status):
+    print(q_id)
+    pass
 
 def handle_admin(ses_stage, raw_phone_number):
     if ses_stage == ADMIN_SESSION_DICT['SendMenu']:
@@ -207,7 +221,6 @@ def start_QnA():
     global Qpoll;
     sent=[]
     Qpoll= hdb.get_QnA_dict()
-    stage=99
     for d in Qpoll:
         emp_phone=d['emp']
         if emp_phone not in sent:
@@ -215,8 +228,8 @@ def start_QnA():
         else:
             continue
         emp_sys_id=hdb.get_system_id(format_phone_for_selection(emp_phone))
-        dbs.inc_stage(system_id=emp_sys_id,stage=stage)
-        is_ready_for_QnA(emp_phone)
+        if emp_sys_id==1: #for QA only. need to send messages to valid numbers
+            is_ready_for_QnA(emp_phone)
     #send_QnA(emp_phone,stage)
 
 
@@ -224,37 +237,25 @@ def is_ready_for_QnA(emp_phone):
     send_private_txt_msg(f"*Hi {hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}!*\nare you ready for day summary questions?"
                          ,emp_phone)
 
-def send_next_QnA(emp_phone,stage):
-    stage=stage+1
+def send_next_QnA(emp_phone,stage,sys_id):
+    #stage=stage+1
     formatted_phone=format_phone_for_selection(emp_phone)
-    dbs.inc_stage(phone_number=formatted_phone)
+    #hdb.update_stage(sys_id,stage=stage)
     question=get_next_question(emp_phone,stage)
     send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}",emp_phone)
 
 def get_next_question(emp_phone,stage):
-    indx=stage-100
+    #indx=stage-100
+    indx=0
     emp_phone=emp_phone.split('@')[0]
-    if emp_phone not in Qpoll:
-        finish_QnA(emp_phone)
     for d in Qpoll:
         if d['emp']==emp_phone and d['questions'] != []:
-            res= {'Q':d['questions'][indx][0],'BN':hdb.get_buisness_name(format_phone_for_selection(d['customer']))}
-            #res= {'Q':d['questions'].pop(indx)[0],'BN':hdb.get_buisness_name(format_phone_for_selection(d['customer']))}
-            return res
+            return {'Q':d['questions'][indx][1],'BN':hdb.get_buisness_name(format_phone_for_selection(d['customer']))}
         elif d['questions']==[]:
             del(d)
 
 def finish_QnA(emp_phone):
     pass
-
-"""
-def send_QnA(d,stage):
-    for d in Qpoll:
-        if d['emp'] == emp_phone:
-    indx=stage-100
-    buisness_name=hdb.get_buisness_name(format_phone_for_selection(d['customer']))
-    send_private_txt_msg(f"for {buisness_name}: {d['questions'][indx][0]}?",d['emp'])
-    """
 
 # endregion
 
@@ -273,7 +274,7 @@ def webhook():
     #-------------- for QA ONLY -----------#
     # invented numbers so bot sends messages to error numbers
     if json_data['type'] == 'error':
-        return jsonify({"success": True}), 200
+        return 'error'
     #---------------------------------------#
     if json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]

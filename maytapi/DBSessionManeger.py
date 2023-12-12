@@ -33,7 +33,6 @@ def inc_stage(system_id=None,phone_number=None,stage=None):
 
 
 
-    hdb
 """
     def inc_stage(self, phone_number,stage=None):
         session = self.get_session(phone_number)
@@ -70,7 +69,6 @@ def inc_stage(system_id=None,phone_number=None,stage=None):
 
 if __name__=="__main__":
     print("kaki")
-    inc_stage(system_id=1)
     kaki=1
 
 
