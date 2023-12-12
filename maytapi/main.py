@@ -276,10 +276,12 @@ def send_daily_report(row_customer_phone):
     customer_phone=format_phone_for_selection(row_customer_phone)
     msgs=hdb.get_daily(customer_phone)
     txt=f"*Hi {hdb.get_buisness_name(customer_phone)}!*\n here is what we did for you today:"
+    counter=1
     for m in msgs:
-        txt=txt+f"\n1. {m[1]}"
+        txt=txt+f"\n{counter}. {m[1]}"
+        counter=counter+1
     send_private_txt_msg(txt,row_customer_phone)
-    #DELETE ALL MSGS SENT TO CUSTOMER FROM DAILY TABLE
+    hdb.delete_daily(customer_phone)
 
 
 
