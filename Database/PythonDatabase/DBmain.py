@@ -220,7 +220,9 @@ class Database:
         return res
 
     def get_daily(self,customer_number):
-        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=1 and d.quoted_phone={customer_number}")
+        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=1 and d.quoted_phone=%s",
+                                   params=[customer_number])
+
         if row == None:
             return None
         else:
@@ -313,12 +315,19 @@ class Database:
         else:
             ses = self.select_with('sessions', system_id=self.get_system_id(phone_number))
         return ses
+
+    def delete_daily(self,customer_number):
+        self.execute_update("SET SQL_SAFE_UPDATES = 0")
+        command=f"delete from daily_answers where quoted_phone=%s"
+        params=[customer_number]
+        self.execute_update(command,params)
+        self.execute_update("SET SQL_SAFE_UPDATES = 1")
     # endregion
 
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    kaki=DBhelpful.get_daily('0528449529')
+    DBhelpful.delete_daily('1122')
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
     kaki=1
