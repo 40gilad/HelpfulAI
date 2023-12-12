@@ -259,8 +259,11 @@ class Database:
         poll = []
         for t in nums:
             customer, emp = t
-            questions = self.select_with("messages", quoter_phone=emp, quoted_phone=customer,status='0', col="content")
-            poll_record = {"emp": emp, "customer": customer, "questions": questions}
+            questions = self.select_with("messages", quoter_phone=emp, quoted_phone=customer,status='0', col="msg_id,content")
+            poll_record = {"emp": emp, "customer": customer}
+            poll_record['questions']=[]
+            for q in questions:
+                poll_record['questions'].append((q[0],q[1]))
             poll.append(poll_record)
         return poll
 
@@ -301,14 +304,7 @@ class Database:
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    DBhelpful.get_employee_name(phone_number='0526263862')
-
-    """
-    #DBhelpful.insert_employee("313416562","Gilad Meir","40gilad@gmail.com","0526263862",role="admin")
-    print(DBhelpful.get_premission("0526263862"))
-    for x in DBhelpful.select_with("employee", system_id="14"):
-        print(x)
-        """
+    kaki=DBhelpful.get_QnA_dict()
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
     kaki=1
