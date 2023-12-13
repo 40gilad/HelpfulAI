@@ -9,7 +9,6 @@ sessions=hdb.get_session()
 
 def create_new_session(self, sys_id):
     hdb.insert_session(sys_id)
-    print("need to insert session into sessions dict")
 
 
 def get_session(phone_number=None):

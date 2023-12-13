@@ -156,15 +156,15 @@ class Database:
         params = (_id, buisness_name)
         self.execute_insertion(query, params)
 
-    def insert_message(self, msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp):
+    def insert_message(self, msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp,status=0):
         query = (
-            "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,timestamp) VALUES (%s,%s,%s,%s,%s,%s)")
-        params = (msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp)
+            "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,timestamp,status) VALUES (%s,%s,%s,%s,%s,%s,%s)")
+        params = (msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp,status)
         self.execute_insertion(query, params)
 
     def insert_session(self, sys_id, stage=0):
-        command = ("INSERT INTO sessions(system_id,stage) VALUES (%d,%d)")
-        params = (sys_id, stage)
+        command = ("INSERT INTO sessions(system_id,stage) VALUES (%s,%s)")
+        params = [sys_id, stage]
         self.execute_insertion(command, params)
 
     # endregion
@@ -230,7 +230,7 @@ class Database:
 
     def get_system_id(self, phone_number):
         row = self.select_with("person", phone=phone_number)
-        if row == None:
+        if row == []:
             return None
         else:
             return row[0][0]
@@ -281,6 +281,9 @@ class Database:
             poll.append(poll_record)
         return poll
 
+    def get_QnA_emps(self):
+        return self.execute_selection("select quoter_phone from messages where status=0 group by quoter_phone")
+
     def get_buisness_name(self,phone_number):
          return self.select_with(table_name="customer",system_id=self.get_system_id(phone_number),col='buisness_name')[0][0]
 
@@ -314,7 +317,9 @@ class Database:
             ses = self.select_with('sessions')
         else:
             ses = self.select_with('sessions', system_id=self.get_system_id(phone_number))
-        return ses
+            if ses==[]:
+                return None
+            return ses
 
     def delete_daily(self,customer_number):
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
@@ -327,7 +332,7 @@ class Database:
 
 if __name__ == "__main__":
     DBhelpful = Database(is_qa=1)
-    DBhelpful.delete_daily('1122')
+    DBhelpful.get_QnA_emps()
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
     kaki=1
