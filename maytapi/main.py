@@ -26,7 +26,6 @@ Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
 hdb = Database.Database()
-sessions = dbs.get_session()
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}/sendMessage"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 Qpoll = None
@@ -53,7 +52,16 @@ def send_msg(body):
         print("Oops! Something went wrong:", err)
 
 
+def format_phone_for_sending(phone_number):
+    if phone_number.startswith('0'):
+        phone_number = phone_number[1:]
+        phone_number = '972' + phone_number
+        return phone_number
+
+
 def format_phone_for_selection(phone_number):
+    if phone_number is None:
+        return
     # Remove leading '+' if present
     if phone_number.startswith('+'):
         phone_number = phone_number.lstrip('+')
@@ -150,10 +158,9 @@ def handle_income_private_msg(json_data):
         send_private_txt_msg("You are not registered in the system! Please contact the system administrator",
                              raw_phone_number)
         return
-    elif sys_id not in sessions:
-        # has system ID but no session
-        dbs.create_new_session(sys_id)
-        sessions.append(dbs.get_session(formatted_phone_number))
+    elif hdb.get_session(formatted_phone_number) is None:
+        hdb.insert_session(sys_id)
+        send_private_txt_msg("you have new session!", raw_phone_number)
 
     ses_stage = hdb.get_session(formatted_phone_number)[0][1]
     ses_permission = hdb.get_premission(formatted_phone_number)
@@ -161,6 +168,11 @@ def handle_income_private_msg(json_data):
 
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
+    # ---------- triggering QnA from admins phone --------------#
+    if sys_id == 1 and income_msg.lower() == "qna":
+        start_QnA()
+        return
+    # -----------------------------------------------------------#
     income_msg = income_msg.lower()
     if ses_stage >= 99:
         if income_msg != 'yes' and income_msg != 'no':
@@ -191,7 +203,7 @@ def pop_question(emp_phone, ses_stage, status):
         if d['emp'] == emp_phone:
             answerd = d['questions'].pop(0)
             insert_answer(answerd[0], status)
-            hdb.insrt_daily_msg(answerd[0],format_phone_for_selection(d['customer']),status)
+            hdb.insrt_daily_msg(answerd[0], format_phone_for_selection(d['customer']), status)
             return
 
 
@@ -227,17 +239,13 @@ def handle_employee(ses_stage, raw_phone_number):
 
 def start_QnA():
     global Qpoll;
-    sent = []
     Qpoll = hdb.get_QnA_dict()
-    for d in Qpoll:
-        emp_phone = d['emp']
-        if emp_phone not in sent:
-            sent.append(emp_phone)
-        else:
-            continue
-        emp_sys_id = hdb.get_system_id(format_phone_for_selection(emp_phone))
-        if emp_sys_id == 1:  # for QA only. need to send messages to valid numbers
-            is_ready_for_QnA(emp_phone)
+    emps_to_ask = hdb.get_QnA_emps()
+    for e in emps_to_ask:
+        emp_phone = e[0]
+        raw_phone = format_phone_for_sending(emp_phone)
+        hdb.update_stage(hdb.get_system_id(emp_phone), 99)
+        is_ready_for_QnA(format_phone_for_sending(emp_phone))
 
 
 def is_ready_for_QnA(emp_phone):
@@ -249,11 +257,13 @@ def is_ready_for_QnA(emp_phone):
 def send_next_QnA(emp_phone):
     formatted_phone = format_phone_for_selection(emp_phone)
     question = get_next_question(emp_phone)
+    if question == None:
+        return
     send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", emp_phone)
 
 
-def get_next_question(row_emp_phone):
-    emp_phone=format_phone_for_selection(row_emp_phone)
+def get_next_question(raw_emp_phone):
+    emp_phone = format_phone_for_selection(raw_emp_phone)
     is_emp_in_poll = False
     emp_phone = emp_phone.split('@')[0]
     for d in Qpoll:
@@ -263,26 +273,26 @@ def get_next_question(row_emp_phone):
         elif d['questions'] == []:
             Qpoll.remove(d)
     if not is_emp_in_poll:
-        finish_QnA(row_emp_phone,d['customer'])
+        finish_QnA(raw_emp_phone, format_phone_for_sending(d['customer']))
 
 
-
-def finish_QnA(emp_phone,customer_phone):
+def finish_QnA(emp_phone, customer_phone):
     send_private_txt_msg("Thank you! that's all for today", emp_phone)
     hdb.update_stage(hdb.get_system_id(format_phone_for_selection(emp_phone)), 4)
     send_daily_report(customer_phone)
 
-def send_daily_report(row_customer_phone):
-    customer_phone=format_phone_for_selection(row_customer_phone)
-    msgs=hdb.get_daily(customer_phone)
-    txt=f"*Hi {hdb.get_buisness_name(customer_phone)}!*\n here is what we did for you today:"
-    counter=1
-    for m in msgs:
-        txt=txt+f"\n{counter}. {m[1]}"
-        counter=counter+1
-    send_private_txt_msg(txt,row_customer_phone)
-    hdb.delete_daily(customer_phone)
 
+def send_daily_report(raw_customer_phone):
+    print("starting daily to number " + raw_customer_phone)
+    customer_phone = format_phone_for_selection(raw_customer_phone)
+    msgs = hdb.get_daily(customer_phone)
+    txt = f"*Hi {hdb.get_buisness_name(raw_customer_phone)}!*\n here is what we did for you today:"
+    counter = 1
+    for m in msgs:
+        txt = txt + f"\n{counter}. {m[1]}"
+        counter = counter + 1
+    send_private_txt_msg(txt, raw_customer_phone)
+    hdb.delete_daily(customer_phone)
 
 
 # endregion
@@ -310,11 +320,32 @@ def webhook():
             handle_group_msg(json_data)
         elif conv_type == private_chat_type:
             handle_income_private_msg(json_data)
+    elif json_data['type'] == 'ack':
+        print("message was acked")
     else:
         print("Unknow Message", file=sys.stdout, flush=True)
     return jsonify({"success": True}), 200
 
 
 if __name__ == '__main__':
-    send_daily_report('972528449529')
+    body={
+        "to_number": "972526263862",
+        "type": "buttons",
+        "message": "Message Body",
+        "buttons": [
+            {
+                "id": "!response 1",
+                "text": "Test Button 1"
+            },
+            {
+                "id": "!response 2",
+                "text": "Test Button 2"
+            },
+            {
+                "id": "!response 3",
+                "text": "Test Button 3"
+            }
+        ]
+    }
+    send_msg(body)
     app.run()
