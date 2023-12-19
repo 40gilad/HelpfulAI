@@ -22,6 +22,7 @@ ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
 ADMIN_SESSION_DICT = json.loads(os.getenv("ADMIN_SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
 
+ROBOT_SIGN='🤖'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
@@ -153,16 +154,27 @@ def handle_group_msg(json_data):
         if message["fromMe"]:
             return
         if _type == "text" and 'quoted' in json_data:
+            msg_id=json_data["quoted"]["id"]
             group_id = json_data["conversation"]
             angel_phone = json_data["user"]["phone"]
             customer_phone = json_data["quoted"]["user"]["phone"]
             if is_angel_ack(message["text"], angel_phone, customer_phone, group_id):
-                hdb.insert_message(json_data["quoted"]["id"], group_id,
+                hdb.insert_message(msg_id, group_id,
                                    format_phone_for_selection(customer_phone),
                                    format_phone_for_selection(angel_phone),
                                    json_data["quoted"]["text"], json_data["timestamp"])
+                react_robot(group_id=group_id,msg_id=msg_id)
 
 
+
+def react_robot(group_id,msg_id):
+    body={
+        "to_number": group_id,
+        "type": "reaction",
+        "message": ROBOT_SIGN,
+        "reply_to": msg_id
+    }
+    send_msg(body)
 # endregion
 
 # region Private chat handles
