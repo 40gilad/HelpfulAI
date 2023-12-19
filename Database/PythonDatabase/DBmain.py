@@ -134,6 +134,11 @@ class Database:
     def insert_role(self, r_id, r_name):
         print("is insert role needed? ")
 
+    def insert_conversation(self,conv_id,conv_name,customer_phone,emp_phone):
+        command = ("INSERT INTO conversations(conv_id,conv_name,customer_id,employee_id) VALUES (%s,%s,%s,%s)")
+        params = (conv_id,conv_name,self.get_system_id(customer_phone),self.get_system_id(emp_phone))
+        self.execute_insertion(command, params)
+
     def insert_person(self, _id, name, email, phone):
         command = ("INSERT INTO person(person_id,person_name,email,phone) VALUES (%s,%s,%s,%s)")
         params = (_id, name, email, phone)
