@@ -26,7 +26,7 @@ Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
 hdb = Database.Database()
-url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}/sendMessage"
+url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 Qpoll = None
 
@@ -35,11 +35,38 @@ Qpoll = None
 
 # region Support functions
 
+def create_group(name,numbers):
+    """
+    name=String
+    numbers=[]
+
+    """
+
+    if not isinstance(numbers,list):
+        raise TypeError("Numbers must be a list of strings")
+    body={
+        "name": name,
+        "numbers": numbers
+    }
+    try:
+        response = requests.post(f'{url}/createGroup', json=body, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
+        print("Response:", response.json())
+        return response.json()['data']['id']
+    except requests.exceptions.HTTPError as errh:
+        print("HTTP Error:", errh)
+    except requests.exceptions.ConnectionError as errc:
+        print("Error Connecting:", errc)
+    except requests.exceptions.Timeout as errt:
+        print("Timeout Error:", errt)
+    except requests.exceptions.RequestException as err:
+        print("Oops! Something went wrong:", err)
+
 def send_msg(body):
     print("Request Body", body, file=sys.stdout, flush=True)
 
     try:
-        response = requests.post(url, json=body, headers=headers)
+        response = requests.post(f'{url}/sendMessage', json=body, headers=headers)
         response.raise_for_status()  # Raise an error for bad responses
         print("Response:", response.json())
     except requests.exceptions.HTTPError as errh:
@@ -314,7 +341,17 @@ def webhook():
     if json_data['type'] == 'error':
         return 'error'
     # ---------------------------------------#
-    if json_data['type'] != 'ack':
+    if json_data['conversation']=='972537750144@c.us':
+        print("handle text from voice message")
+    elif json_data['message']['type']=='ptt':
+        body={
+      "to_number": "972537750144",
+      "type": "forward",
+      "message": json_data['message']['id'],
+      "forward_caption": True
+    }
+        send_msg(body)
+    elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
         if conv_type == group_chat_type:
             handle_group_msg(json_data)
@@ -328,24 +365,26 @@ def webhook():
 
 
 if __name__ == '__main__':
-    body={
-        "to_number": "972526263862",
-        "type": "buttons",
-        "message": "Message Body",
-        "buttons": [
-            {
-                "id": "!response 1",
-                "text": "Test Button 1"
-            },
-            {
-                "id": "!response 2",
-                "text": "Test Button 2"
-            },
-            {
-                "id": "!response 3",
-                "text": "Test Button 3"
-            }
-        ]
-    }
-    send_msg(body)
     app.run()
+    """
+    #group1:
+    group1='group1:E_lior & C_hagit'
+    lior_emp='972584105280'
+    hagit_cust='972584103477'
+
+    #group2:
+    group2='group2:E_meiran & C_adi'
+    meiran_emp='972502760600'
+    adi_cust='972584105481'
+
+    admin_gilad='972526263862'
+    admin_yona='972528449529'
+    hdb.insert_employee('11111111','lior tz','lior@QA.com',format_phone_for_selection(lior_emp))
+    hdb.insert_employee('2222222','meiran tz','meiran@QA.com',format_phone_for_selection(meiran_emp))
+    hdb.insert_customer('3333','hagit cu','hagit@QA.com',format_phone_for_selection(hagit_cust),'Buisness of Hagit')
+    hdb.insert_customer('4444','adi cu','adi@QA.com',format_phone_for_selection(adi_cust),'Buisness of Adi')
+    hdb.insert_conversation(create_group(group1,[lior_emp,hagit_cust,admin_yona,admin_gilad]),group1,
+                            format_phone_for_selection(hagit_cust),format_phone_for_selection(lior_emp))
+    hdb.insert_conversation(create_group(group2,[meiran_emp,adi_cust,admin_yona,admin_gilad]),group2,
+                            format_phone_for_selection(adi_cust),format_phone_for_selection(meiran_emp))
+                            """
