@@ -70,7 +70,7 @@ CREATE TABLE messages (
     			status INT NOT NULL CHECK (status IN (1, 0)) DEFAULT 0,
 
 
-			primary key (msg_id,quoter_phone)
+			primary key (msg_id,quoter_phone,quoted_phone)
 
 	);
 
@@ -86,6 +86,11 @@ create table daily_answers (
             msg_id VARCHAR(255) primary key,
             quoted_phone VARCHAR(12),
             status INT NOT NULL CHECK (status IN (1, 0)) DEFAULT 0
+    );
+
+create table sent_messages (
+            msg_id VARCHAR(255),
+            quoter_phone VARCHAR(12) primary key
     );
 
 insert into _role values (1,"admin"),(2,"team_leader"),(3,"employee");

@@ -131,6 +131,11 @@ class Database:
         params=[msg_id,customer_phone,status]
         self.execute_insertion(command,params)
 
+    def insert_sent_message(self,msg_id,emp_phone):
+        command="INSERT INTO sent_messages(msg_id,quoter_phone) VALUES (%s,%s)"
+        params=[msg_id,emp_phone]
+        self.execute_insertion(command,params)
+
     def insert_role(self, r_id, r_name):
         print("is insert role needed? ")
 
@@ -224,9 +229,9 @@ class Database:
             return None
         return res
 
-    def get_daily(self,customer_number):
-        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=1 and d.quoted_phone=%s",
-                                   params=[customer_number])
+    def get_daily(self,customer_number,status=1):
+        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=%s and d.quoted_phone=%s",
+                                   params=[status,customer_number])
 
         if row == None:
             return None
@@ -235,6 +240,13 @@ class Database:
 
     def get_system_id(self, phone_number):
         row = self.select_with("person", phone=phone_number)
+        if row == []:
+            return None
+        else:
+            return row[0][0]
+
+    def get_sent_message(self,emp_phone):
+        row=self.select_with("sent_messages",quoter_phone=emp_phone)
         if row == []:
             return None
         else:
@@ -330,6 +342,13 @@ class Database:
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
         command=f"delete from daily_answers where quoted_phone=%s"
         params=[customer_number]
+        self.execute_update(command,params)
+        self.execute_update("SET SQL_SAFE_UPDATES = 1")
+
+    def delete_sent_message(self,msg_id):
+        self.execute_update("SET SQL_SAFE_UPDATES = 0")
+        command=f"delete from sent_messages where msg_id=%s"
+        params=[msg_id]
         self.execute_update(command,params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
     # endregion
