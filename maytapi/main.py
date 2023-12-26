@@ -22,7 +22,7 @@ ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
 ADMIN_SESSION_DICT = json.loads(os.getenv("ADMIN_SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
 
-ROBOT_SIGN='🤖'
+ROBOT_SIGN = '🤖'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
@@ -36,16 +36,16 @@ Qpoll = None
 
 # region Support functions
 
-def create_group(name,numbers):
+def create_group(name, numbers):
     """
     name=String
     numbers=[]
 
     """
 
-    if not isinstance(numbers,list):
+    if not isinstance(numbers, list):
         raise TypeError("Numbers must be a list of strings")
-    body={
+    body = {
         "name": name,
         "numbers": numbers
     }
@@ -62,6 +62,7 @@ def create_group(name,numbers):
         print("Timeout Error:", errt)
     except requests.exceptions.RequestException as err:
         print("Oops! Something went wrong:", err)
+
 
 def send_msg(body):
     print("Request Body", body, file=sys.stdout, flush=True)
@@ -154,7 +155,7 @@ def handle_group_msg(json_data):
         if message["fromMe"]:
             return
         if _type == "text" and 'quoted' in json_data:
-            msg_id=json_data["quoted"]["id"]
+            msg_id = json_data["quoted"]["id"]
             group_id = json_data["conversation"]
             angel_phone = json_data["user"]["phone"]
             customer_phone = json_data["quoted"]["user"]["phone"]
@@ -163,18 +164,19 @@ def handle_group_msg(json_data):
                                    format_phone_for_selection(customer_phone),
                                    format_phone_for_selection(angel_phone),
                                    json_data["quoted"]["text"], json_data["timestamp"])
-                react_robot(group_id=group_id,msg_id=msg_id)
+                react_robot(group_id=group_id, msg_id=msg_id)
 
 
-
-def react_robot(group_id,msg_id):
-    body={
+def react_robot(group_id, msg_id):
+    body = {
         "to_number": group_id,
         "type": "reaction",
         "message": ROBOT_SIGN,
         "reply_to": msg_id
     }
     send_msg(body)
+
+
 # endregion
 
 # region Private chat handles
@@ -215,7 +217,7 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
     income_msg = income_msg.lower()
     if ses_stage >= 99:
         if income_msg != 'yes' and income_msg != 'no':
-            send_private_txt_msg('please answer only yes or no')
+            send_private_txt_msg('please answer only yes or no', raw_phone_number)
             return
         elif ses_stage == 100:
             if income_msg == 'yes':
@@ -240,10 +242,16 @@ def pop_question(emp_phone, ses_stage, status):
     global Qpoll
     for d in Qpoll:
         if d['emp'] == emp_phone:
-            answerd = d['questions'].pop(0)
-            insert_answer(answerd[0], status)
-            hdb.insrt_daily_msg(answerd[0], format_phone_for_selection(d['customer']), status)
-            return
+            answerd_id = hdb.get_sent_message(emp_phone)  # get id of last sent question
+            index = 0
+            for q in d['questions']:
+                if answerd_id == q[0]:
+                    answerd = d['questions'].pop(index)
+                    insert_answer(answerd[0], status)
+                    hdb.insrt_daily_msg(answerd[0], format_phone_for_selection(d['customer']), status)
+                    hdb.delete_sent_message(answerd_id)  # delete last sent question from DB
+                    return
+                index += 1
 
 
 def insert_answer(q_id, status):
@@ -294,23 +302,28 @@ def is_ready_for_QnA(emp_phone):
 
 
 def send_next_QnA(emp_phone):
-    formatted_phone = format_phone_for_selection(emp_phone)
     question = get_next_question(emp_phone)
     if question == None:
         return
+    hdb.insert_sent_message(question['id'], format_phone_for_selection(emp_phone))
     send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", emp_phone)
 
 
 def get_next_question(raw_emp_phone):
+    global Qpoll
     emp_phone = format_phone_for_selection(raw_emp_phone)
     is_emp_in_poll = False
     emp_phone = emp_phone.split('@')[0]
-    for d in Qpoll:
+    for d in Qpoll:  # dosent iterate the last item when Qpoll length=1
         if d['emp'] == emp_phone and d['questions'] != []:
             is_emp_in_poll = True
-            return {'Q': d['questions'][0][1], 'BN': hdb.get_buisness_name(format_phone_for_selection(d['customer']))}
+            return {'Q': d['questions'][0][1], 'BN': hdb.get_buisness_name(format_phone_for_selection(d['customer'])),
+                    'id': d['questions'][0][0]}
+        """
         elif d['questions'] == []:
-            Qpoll.remove(d)
+            continue
+            #Qpoll.remove(d)
+            """
     if not is_emp_in_poll:
         finish_QnA(raw_emp_phone, format_phone_for_sending(d['customer']))
 
@@ -324,13 +337,17 @@ def finish_QnA(emp_phone, customer_phone):
 def send_daily_report(raw_customer_phone):
     print("starting daily to number " + raw_customer_phone)
     customer_phone = format_phone_for_selection(raw_customer_phone)
-    msgs = hdb.get_daily(customer_phone)
-    txt = f"*Hi {hdb.get_buisness_name(raw_customer_phone)}!*\n here is what we did for you today:"
-    counter = 1
-    for m in msgs:
-        txt = txt + f"\n{counter}. {m[1]}"
-        counter = counter + 1
-    send_private_txt_msg(txt, raw_customer_phone)
+    for status in range(1, -1, -1):
+        msgs = hdb.get_daily(customer_phone, status=status)
+        if status == 0:
+            txt = f"*this is what we had to leave for tomorrow:*"
+        elif status == 1:
+            txt = f"*Hi {hdb.get_buisness_name(raw_customer_phone)}!*\n here is what we did for you today:"
+        counter = 1
+        for m in msgs:
+            txt = txt + f"\n{counter}. {m[1]}"
+            counter = counter + 1
+        send_private_txt_msg(txt, raw_customer_phone)
     hdb.delete_daily(customer_phone)
 
 
@@ -348,20 +365,23 @@ def send_admin_menu(raw_phone_number):
 def webhook():
     json_data = request.get_json()
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
+
     # -------------- for QA ONLY -----------#
     # invented numbers so bot sends messages to error numbers
     if json_data['type'] == 'error':
         return 'error'
     # ---------------------------------------#
-    if json_data['conversation']=='972537750144@c.us':
+    elif json_data['type'] == 'ack':
+        print("message was acked")
+    elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us':
         print("handle text from voice message")
-    elif json_data['message']['type']=='ptt':
-        body={
-      "to_number": "972537750144",
-      "type": "forward",
-      "message": json_data['message']['id'],
-      "forward_caption": True
-    }
+    elif json_data['message']['type'] == 'ptt':
+        body = {
+            "to_number": "972537750144",
+            "type": "forward",
+            "message": json_data['message']['id'],
+            "forward_caption": True
+        }
         send_msg(body)
     elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
@@ -369,34 +389,15 @@ def webhook():
             handle_group_msg(json_data)
         elif conv_type == private_chat_type:
             handle_income_private_msg(json_data)
-    elif json_data['type'] == 'ack':
-        print("message was acked")
     else:
         print("Unknow Message", file=sys.stdout, flush=True)
     return jsonify({"success": True}), 200
 
 
 if __name__ == '__main__':
+    for i in range(1, -1, -1):
+        print(f"kaki {i}")
+    """
+    start_QnA()
     app.run()
     """
-    #group1:
-    group1='group1:E_lior & C_hagit'
-    lior_emp='972584105280'
-    hagit_cust='972584103477'
-
-    #group2:
-    group2='group2:E_meiran & C_adi'
-    meiran_emp='972502760600'
-    adi_cust='972584105481'
-
-    admin_gilad='972526263862'
-    admin_yona='972528449529'
-    hdb.insert_employee('11111111','lior tz','lior@QA.com',format_phone_for_selection(lior_emp))
-    hdb.insert_employee('2222222','meiran tz','meiran@QA.com',format_phone_for_selection(meiran_emp))
-    hdb.insert_customer('3333','hagit cu','hagit@QA.com',format_phone_for_selection(hagit_cust),'Buisness of Hagit')
-    hdb.insert_customer('4444','adi cu','adi@QA.com',format_phone_for_selection(adi_cust),'Buisness of Adi')
-    hdb.insert_conversation(create_group(group1,[lior_emp,hagit_cust,admin_yona,admin_gilad]),group1,
-                            format_phone_for_selection(hagit_cust),format_phone_for_selection(lior_emp))
-    hdb.insert_conversation(create_group(group2,[meiran_emp,adi_cust,admin_yona,admin_gilad]),group2,
-                            format_phone_for_selection(adi_cust),format_phone_for_selection(meiran_emp))
-                            """
