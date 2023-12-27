@@ -229,9 +229,11 @@ class Database:
             return None
         return res
 
-    def get_daily(self,customer_number,status=1):
-        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d inner join messages m on d.msg_id=m.msg_id where d.quoted_phone=m.quoted_phone and d.status=%s and d.quoted_phone=%s",
-                                   params=[status,customer_number])
+    def get_daily(self,customer_phone,status=1):
+        row=self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d"
+                                   f" inner join messages m on d.msg_id=m.msg_id "
+                                   f"where d.quoted_phone=m.quoted_phone and d.status=%s and d.quoted_phone=%s",
+                                   params=[status,customer_phone])
 
         if row == None:
             return None
@@ -338,10 +340,10 @@ class Database:
                 return None
             return ses
 
-    def delete_daily(self,customer_number):
+    def delete_daily(self,customer_phone):
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
         command=f"delete from daily_answers where quoted_phone=%s"
-        params=[customer_number]
+        params=[customer_phone]
         self.execute_update(command,params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
 

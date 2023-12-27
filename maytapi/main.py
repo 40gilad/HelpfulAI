@@ -1,14 +1,17 @@
+# region Imports
+
 from flask import Flask, request, jsonify
 import requests
 import sys
 import json
 import os
 from dotenv import load_dotenv
-import DBSessionManeger as dbs
 from datetime import datetime
 
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
+
+# endregion
 
 # region Globals and initializations
 
@@ -19,10 +22,11 @@ PHONE_ID = os.getenv("PHONE_ID")
 API_TOKEN = os.getenv("TOKEN")
 TRIAL_GROUP_ID = os.getenv("GROUP_ID")
 ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
-ADMIN_SESSION_DICT = json.loads(os.getenv("ADMIN_SESSION_DICT"))
+SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
 
 ROBOT_SIGN = '🤖'
+timluli = '972537750144'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
@@ -35,6 +39,22 @@ Qpoll = None
 # endregion
 
 # region Support functions
+
+def execute_post(body, url_suffix):
+    try:
+        response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
+        print("Response:", response.json())
+        return response.json()['data']['id']
+    except requests.exceptions.HTTPError as errh:
+        print("HTTP Error:", errh)
+    except requests.exceptions.ConnectionError as errc:
+        print("Error Connecting:", errc)
+    except requests.exceptions.Timeout as errt:
+        print("Timeout Error:", errt)
+    except requests.exceptions.RequestException as err:
+        print("Oops! Something went wrong:", err)
+
 
 def create_group(name, numbers):
     """
@@ -49,36 +69,12 @@ def create_group(name, numbers):
         "name": name,
         "numbers": numbers
     }
-    try:
-        response = requests.post(f'{url}/createGroup', json=body, headers=headers)
-        response.raise_for_status()  # Raise an error for bad responses
-        print("Response:", response.json())
-        return response.json()['data']['id']
-    except requests.exceptions.HTTPError as errh:
-        print("HTTP Error:", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting:", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error:", errt)
-    except requests.exceptions.RequestException as err:
-        print("Oops! Something went wrong:", err)
+    execute_post(body=body, url_suffix='createGroup')
 
 
 def send_msg(body):
-    print("Request Body", body, file=sys.stdout, flush=True)
-
-    try:
-        response = requests.post(f'{url}/sendMessage', json=body, headers=headers)
-        response.raise_for_status()  # Raise an error for bad responses
-        print("Response:", response.json())
-    except requests.exceptions.HTTPError as errh:
-        print("HTTP Error:", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting:", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error:", errt)
-    except requests.exceptions.RequestException as err:
-        print("Oops! Something went wrong:", err)
+    print(f"Request Body {body}")
+    execute_post(body=body, url_suffix='sendMessage')
 
 
 def format_phone_for_sending(phone_number):
@@ -88,12 +84,12 @@ def format_phone_for_sending(phone_number):
         return phone_number
 
 
-def format_phone_for_selection(phone_number):
-    if phone_number is None:
+def format_phone_for_selection(raw_phone_number):
+    if raw_phone_number is None:
         return
     # Remove leading '+' if present
-    if phone_number.startswith('+'):
-        phone_number = phone_number.lstrip('+')
+    if raw_phone_number.startswith('+'):
+        phone_number = raw_phone_number.lstrip('+')
 
     # Check if the number starts with '972' and remove it
     if phone_number.startswith('972'):
@@ -109,28 +105,28 @@ def format_phone_for_selection(phone_number):
     return phone_number
 
 
-def is_angel(phone_number, group_id=None):
+def is_angel(raw_phone_number, group_id=None):
     if group_id is None:
         return False
-    formatted_phone = format_phone_for_selection(phone_number)
-    sys_id = hdb.get_system_id(formatted_phone)
-    if hdb.get_premission(formatted_phone) >= 1 \
-            and sys_id in hdb.get_employees_from_conv(group_id):  # employee in group with premission
+    formatted_phone = format_phone_for_selection(raw_phone_number)
+    sys_id = hdb.get_system_id(phone_number=formatted_phone)
+    if hdb.get_premission(phone_number=formatted_phone) >= 1 \
+            and sys_id in hdb.get_employees_from_conv(conv_id=group_id):  # employee in group with premission
         return True
     return False
 
 
-def is_customer(phone_number, group_id=None):
+def is_customer(raw_phone_number, group_id=None):
     if group_id is None:
         return False
-    formatted_phone = format_phone_for_selection(phone_number)
+    formatted_phone = format_phone_for_selection(phone_number=raw_phone_number)
     sys_id = hdb.get_system_id(formatted_phone)
     if sys_id == hdb.get_customer_from_conv(group_id):  # customer is in conversation
         return True
     return False
 
 
-def is_angel_ack(txt, e_phone, c_phone, group_id):
+def is_angel_ack(txt, emp_phone, customer_phone, group_id):
     """
     if msg is ack sign
     AND quoter is angel from the relevant group with premission
@@ -138,8 +134,8 @@ def is_angel_ack(txt, e_phone, c_phone, group_id):
 
     """
     if txt in ANGEL_SIGN and \
-            is_angel(e_phone, group_id) and \
-            is_customer(c_phone, group_id):
+            is_angel(raw_phone_number=emp_phone, group_id=group_id) and \
+            is_customer(raw_phone_number=customer_phone, group_id=group_id):
         return True
 
 
@@ -187,25 +183,35 @@ def send_private_txt_msg(msg, to):
         "message": msg,
         "to_number": to
     }
-    send_msg(body)
+    send_msg(body=body)
+
+
+def forward_msg(msg, to):
+    body = {
+        "to_number": to,
+        "type": "forward",
+        "message": msg,
+        "forward_caption": True
+    }
 
 
 def handle_income_private_msg(json_data):
     raw_phone_number = json_data['user']['id']
-    formatted_phone_number = format_phone_for_selection(raw_phone_number)
+    formatted_phone_number = format_phone_for_selection(phone_number=raw_phone_number)
 
-    sys_id = hdb.get_system_id(formatted_phone_number)
+    sys_id = hdb.get_system_id(phone_number=formatted_phone_number)
     if sys_id is None:
         send_private_txt_msg("You are not registered in the system! Please contact the system administrator",
-                             raw_phone_number)
+                             to=raw_phone_number)
         return
-    elif hdb.get_session(formatted_phone_number) is None:
-        hdb.insert_session(sys_id)
-        send_private_txt_msg("you have new session!", raw_phone_number)
+    elif hdb.get_session(phone_number=formatted_phone_number) is None:
+        hdb.insert_session(sys_id=sys_id)
+        send_private_txt_msg("you have new session!", to=raw_phone_number)
 
-    ses_stage = hdb.get_session(formatted_phone_number)[0][1]
-    ses_permission = hdb.get_premission(formatted_phone_number)
-    run_conversation(ses_stage, ses_permission, raw_phone_number, json_data['message']['text'], sys_id)
+    ses_stage = hdb.get_session(phone_number=formatted_phone_number)[0][1]
+    ses_permission = hdb.get_premission(phone_number=formatted_phone_number)
+    run_conversation(ses_stage=ses_stage, permission=ses_permission, raw_phone_number=raw_phone_number,
+                     income_msg=json_data['message']['text'], sys_id=sys_id)
 
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
@@ -215,55 +221,52 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
         return
     # -----------------------------------------------------------#
     income_msg = income_msg.lower()
-    if ses_stage >= 99:
+    if ses_stage >= SESSION_DICT['IsReadyForQnA']:
         if income_msg != 'yes' and income_msg != 'no':
-            send_private_txt_msg('please answer only yes or no', raw_phone_number)
+            send_private_txt_msg(msg='please answer only yes or no', to=raw_phone_number)
             return
-        elif ses_stage == 100:
+        elif ses_stage == SESSION_DICT['QnA']:
+            status = 0
             if income_msg == 'yes':
                 status = 1
-            elif income_msg == 'no':
-                status = 0
-            pop_question(raw_phone_number, ses_stage, status)
-        else:
-            if ses_stage == 99:
-                if income_msg == 'yes':
-                    hdb.update_stage(system_id=sys_id, stage=ses_stage + 1)
-                elif income_msg == 'no':
-                    return
-        send_next_QnA(raw_phone_number)
+            pop_question(emp_phone=raw_phone_number, status=status)
+        elif ses_stage == SESSION_DICT['IsReadyForQnA']:
+            if income_msg == 'yes':
+                hdb.update_stage(system_id=sys_id, stage=ses_stage + 1)
+        send_next_QnA(raw_emp_phone=raw_phone_number)
 
 
-def pop_question(emp_phone, ses_stage, status):
+def pop_question(emp_phone, status):
     """
     take question outside Qpoll and insert answer to database
     """
-    emp_phone = format_phone_for_selection(emp_phone.split('@')[0])
+    emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
     global Qpoll
     for d in Qpoll:
         if d['emp'] == emp_phone:
-            answerd_id = hdb.get_sent_message(emp_phone)  # get id of last sent question
+            answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
             index = 0
             for q in d['questions']:
                 if answerd_id == q[0]:
                     answerd = d['questions'].pop(index)
-                    insert_answer(answerd[0], status)
-                    hdb.insrt_daily_msg(answerd[0], format_phone_for_selection(d['customer']), status)
-                    hdb.delete_sent_message(answerd_id)  # delete last sent question from DB
+                    insert_answer(msg_id=answerd[0], status=status)
+                    hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
+                                        status=status)
+                    hdb.delete_sent_message(nsg_id=answerd_id)  # delete last sent question from DB
                     return
                 index += 1
 
 
-def insert_answer(q_id, status):
+def insert_answer(msg_id, status):
     if status == 0:
         return
     elif status == 1:
-        hdb.update_msg_status(q_id)
+        hdb.update_msg_status(mdg_id=msg_id)
 
 
 def handle_admin(ses_stage, raw_phone_number):
-    if ses_stage == ADMIN_SESSION_DICT['SendMenu']:
-        send_admin_menu(raw_phone_number)
+    if ses_stage == SESSION_DICT['SendMenu']:
+        send_admin_menu(raw_phone_number=raw_phone_number)
     """
     if recieved == 'Menu' or recieved == 'menu':
         session_manager.inc_stage(sender_phone_number,admin_session_dict["SendMenu"])
@@ -290,23 +293,23 @@ def start_QnA():
     emps_to_ask = hdb.get_QnA_emps()
     for e in emps_to_ask:
         emp_phone = e[0]
-        raw_phone = format_phone_for_sending(emp_phone)
-        hdb.update_stage(hdb.get_system_id(emp_phone), 99)
-        is_ready_for_QnA(format_phone_for_sending(emp_phone))
+        hdb.update_stage(hdb.get_system_id(phone_number=emp_phone), stage=SESSION_DICT['IsReadyForQnA'])
+        is_ready_for_QnA(format_phone_for_sending(phone_number=emp_phone))
 
 
 def is_ready_for_QnA(emp_phone):
     send_private_txt_msg(
-        f"*Hi {hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}!*\nare you ready for day summary questions?"
+        f"*Hi {hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}!*\nare you ready for day "
+        f"summary questions?"
         , emp_phone)
 
 
-def send_next_QnA(emp_phone):
-    question = get_next_question(emp_phone)
+def send_next_QnA(raw_emp_phone):
+    question = get_next_question(raw_emp_phone=raw_emp_phone)
     if question == None:
         return
-    hdb.insert_sent_message(question['id'], format_phone_for_selection(emp_phone))
-    send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", emp_phone)
+    hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
+    send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
 
 
 def get_next_question(raw_emp_phone):
@@ -314,31 +317,30 @@ def get_next_question(raw_emp_phone):
     emp_phone = format_phone_for_selection(raw_emp_phone)
     is_emp_in_poll = False
     emp_phone = emp_phone.split('@')[0]
-    for d in Qpoll:  # dosent iterate the last item when Qpoll length=1
+    for d in Qpoll:
         if d['emp'] == emp_phone and d['questions'] != []:
             is_emp_in_poll = True
-            return {'Q': d['questions'][0][1], 'BN': hdb.get_buisness_name(format_phone_for_selection(d['customer'])),
-                    'id': d['questions'][0][0]}
-        """
-        elif d['questions'] == []:
-            continue
-            #Qpoll.remove(d)
-            """
+            return {
+                'Q': d['questions'][0][1],
+                'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
+                'id': d['questions'][0][0]
+            }
     if not is_emp_in_poll:
-        finish_QnA(raw_emp_phone, format_phone_for_sending(d['customer']))
+        finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
 
 
 def finish_QnA(emp_phone, customer_phone):
-    send_private_txt_msg("Thank you! that's all for today", emp_phone)
-    hdb.update_stage(hdb.get_system_id(format_phone_for_selection(emp_phone)), 4)
-    send_daily_report(customer_phone)
+    send_private_txt_msg(msg="Thank you! that's all for today", to=emp_phone)
+    hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),
+                     stage=SESSION_DICT['SendMenu'])
+    send_daily_report(raw_phone_number=customer_phone)
 
 
 def send_daily_report(raw_customer_phone):
     print("starting daily to number " + raw_customer_phone)
-    customer_phone = format_phone_for_selection(raw_customer_phone)
+    customer_phone = format_phone_for_selection(raw_phone_number=raw_customer_phone)
     for status in range(1, -1, -1):
-        msgs = hdb.get_daily(customer_phone, status=status)
+        msgs = hdb.get_daily(customer_phone=customer_phone, status=status)
         if status == 0:
             txt = f"*this is what we had to leave for tomorrow:*"
         elif status == 1:
@@ -347,8 +349,8 @@ def send_daily_report(raw_customer_phone):
         for m in msgs:
             txt = txt + f"\n{counter}. {m[1]}"
             counter = counter + 1
-        send_private_txt_msg(txt, raw_customer_phone)
-    hdb.delete_daily(customer_phone)
+        send_private_txt_msg(msg=txt, to=raw_customer_phone)
+    hdb.delete_daily(customer_phone=customer_phone)
 
 
 # endregion
@@ -365,39 +367,24 @@ def send_admin_menu(raw_phone_number):
 def webhook():
     json_data = request.get_json()
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
-
-    # -------------- for QA ONLY -----------#
-    # invented numbers so bot sends messages to error numbers
     if json_data['type'] == 'error':
-        return 'error'
-    # ---------------------------------------#
+        return jsonify({"error": "Received an error message"}), 400
     elif json_data['type'] == 'ack':
         print("message was acked")
     elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us':
         print("handle text from voice message")
     elif json_data['message']['type'] == 'ptt':
-        body = {
-            "to_number": "972537750144",
-            "type": "forward",
-            "message": json_data['message']['id'],
-            "forward_caption": True
-        }
-        send_msg(body)
+        forward_msg(msg=json_data['message']['id'], to=timluli)
     elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
         if conv_type == group_chat_type:
-            handle_group_msg(json_data)
+            handle_group_msg(json_data=json_data)
         elif conv_type == private_chat_type:
-            handle_income_private_msg(json_data)
+            handle_income_private_msg(json_data=json_data)
     else:
-        print("Unknow Message", file=sys.stdout, flush=True)
+        return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
     return jsonify({"success": True}), 200
 
 
 if __name__ == '__main__':
-    for i in range(1, -1, -1):
-        print(f"kaki {i}")
-    """
-    start_QnA()
     app.run()
-    """
