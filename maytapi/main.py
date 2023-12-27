@@ -42,22 +42,92 @@ Qpoll = None
 
 # region Support functions
 
-def execute_post(body, url_suffix):
-    try:
-        response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
-        response.raise_for_status()  # Raise an error for bad responses
-        print("Response:", response.json())
-        if url_suffix is CREATE_GROUP_SUFFIX:
-            return response.json()['data']['id']
-    except requests.exceptions.HTTPError as errh:
-        print("HTTP Error:", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting:", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error:", errt)
-    except requests.exceptions.RequestException as err:
-        print("Oops! Something went wrong:", err)
 
+# -------------------------------------------------- QNA SUPPORTERS --------------------------------------------------#
+
+def pop_question(emp_phone, status):
+    """
+    take question outside Qpoll and insert answer to database
+    """
+    emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
+    global Qpoll
+    for d in Qpoll:
+        if d['emp'] == emp_phone:
+            answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
+            index = 0
+            for q in d['questions']:
+                if answerd_id == q[0]:
+                    answerd = d['questions'].pop(index)
+                    insert_answer(msg_id=answerd[0], status=status)
+                    hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
+                                        status=status)
+                    hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
+                    return
+                index += 1
+
+
+def insert_answer(msg_id, status):
+    if status == 0:
+        return
+    elif status == 1:
+        hdb.update_msg_status(msg_id=msg_id)
+
+
+def get_next_question(raw_emp_phone):
+    global Qpoll
+    emp_phone = format_phone_for_selection(raw_emp_phone)
+    is_emp_in_poll = False
+    emp_phone = emp_phone.split('@')[0]
+    for d in Qpoll:
+        if d['emp'] == emp_phone and d['questions'] != []:
+            is_emp_in_poll = True
+            return {
+                'Q': d['questions'][0][1],
+                'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
+                'id': d['questions'][0][0]
+            }
+    if not is_emp_in_poll:
+        finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
+
+
+def finish_QnA(emp_phone, customer_phone):
+    send_private_txt_msg(msg="Thank you! that's all for today", to=emp_phone)
+    hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),
+                     stage=SESSION_DICT['SendMenu'])
+    send_daily_report(raw_customer_phone=customer_phone)
+
+
+# --------------------------------------------------------------------------------------------------------------------#
+# ----------------------------------------------------- TIMLULI ------------------------------------------------------#
+
+def timluli_is_locked():
+    if last_sent_to_timluli is None:
+        return False
+    return True
+
+
+def get_headline_from_timluli(text):
+    return text.split('*')[1]
+
+
+def send_to_timluli(json_data):
+    global last_sent_to_timluli
+    keys = last_sent_to_timluli_keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
+    while timluli_is_locked():
+        continue
+    last_sent_to_timluli = dict.fromkeys(keys)
+    last_sent_to_timluli.update({
+        'msg_id': json_data['id'],
+        'conv_id': json_data['conv_id'],
+        'quoted_phone': json_data['user']['phone'],
+        'quoter_phone': json_data['quoter'],
+        'timestamp': json_data['timestamp']
+    })
+    forward_msg(msg=json_data['id'], to=timluli)
+
+
+# --------------------------------------------------------------------------------------------------------------------#
+# -------------------------------------------------- WA SUPPORTERS ---------------------------------------------------#
 
 def create_group(name, numbers):
     """
@@ -78,6 +148,46 @@ def create_group(name, numbers):
 def send_msg(body):
     print(f"Request Body {body}")
     execute_post(body=body, url_suffix='sendMessage')
+
+
+def react_robot(group_id, msg_id):
+    body = {
+        "to_number": group_id,
+        "type": "reaction",
+        "message": ROBOT_SIGN,
+        "reply_to": msg_id
+    }
+    send_msg(body)
+
+
+def forward_msg(msg, to):
+    body = {
+        "to_number": to,
+        "type": "forward",
+        "message": msg,
+        "forward_caption": True
+    }
+    send_msg(body=body)
+
+
+# --------------------------------------------------------------------------------------------------------------------#
+# ----------------------------------------------------- GENERALS -----------------------------------------------------#
+
+def execute_post(body, url_suffix):
+    try:
+        response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
+        print("Response:", response.json())
+        if url_suffix is CREATE_GROUP_SUFFIX:
+            return response.json()['data']['id']
+    except requests.exceptions.HTTPError as errh:
+        print("HTTP Error:", errh)
+    except requests.exceptions.ConnectionError as errc:
+        print("Error Connecting:", errc)
+    except requests.exceptions.Timeout as errt:
+        print("Timeout Error:", errt)
+    except requests.exceptions.RequestException as err:
+        print("Oops! Something went wrong:", err)
 
 
 def format_phone_for_sending(phone_number):
@@ -142,6 +252,7 @@ def is_angel_ack(txt, emp_phone, customer_phone, group_id):
             is_customer(raw_phone_number=customer_phone, group_id=group_id):
         return True
 
+# --------------------------------------------------------------------------------------------------------------------#
 
 # endregion
 
@@ -174,16 +285,6 @@ def handle_group_msg(json_data):
                                        msg=json_data["quoted"]["text"], time_stamp=json_data["timestamp"])
 
 
-def react_robot(group_id, msg_id):
-    body = {
-        "to_number": group_id,
-        "type": "reaction",
-        "message": ROBOT_SIGN,
-        "reply_to": msg_id
-    }
-    send_msg(body)
-
-
 # endregion
 
 # region Private chat handles
@@ -193,16 +294,6 @@ def send_private_txt_msg(msg, to):
         "type": "text",
         "message": msg,
         "to_number": to
-    }
-    send_msg(body=body)
-
-
-def forward_msg(msg, to):
-    body = {
-        "to_number": to,
-        "type": "forward",
-        "message": msg,
-        "forward_caption": True
     }
     send_msg(body=body)
 
@@ -248,34 +339,6 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
         send_next_QnA(raw_emp_phone=raw_phone_number)
 
 
-def pop_question(emp_phone, status):
-    """
-    take question outside Qpoll and insert answer to database
-    """
-    emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
-    global Qpoll
-    for d in Qpoll:
-        if d['emp'] == emp_phone:
-            answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
-            index = 0
-            for q in d['questions']:
-                if answerd_id == q[0]:
-                    answerd = d['questions'].pop(index)
-                    insert_answer(msg_id=answerd[0], status=status)
-                    hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
-                                        status=status)
-                    hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
-                    return
-                index += 1
-
-
-def insert_answer(msg_id, status):
-    if status == 0:
-        return
-    elif status == 1:
-        hdb.update_msg_status(msg_id=msg_id)
-
-
 def handle_admin(ses_stage, raw_phone_number):
     if ses_stage == SESSION_DICT['SendMenu']:
         send_admin_menu(raw_phone_number=raw_phone_number)
@@ -299,19 +362,15 @@ def handle_employee(ses_stage, raw_phone_number):
     pass
 
 
-def get_headline_from_timluli(text):
-    return text.split('*')[1]
-
-
-
 def handle_timluli(json_data):
     global last_sent_to_timluli
-    hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'],conv_id=last_sent_to_timluli['conv_id'],
+    hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
                        quoted_phone=last_sent_to_timluli['quoted_phone'],
                        quoter_phone=last_sent_to_timluli['quoter_phone'],
                        msg=get_headline_from_timluli(json_data['message']['text']),
                        time_stamp=last_sent_to_timluli['timestamp'])
-    last_sent_to_timluli=None
+    last_sent_to_timluli = None
+
 
 def start_QnA():
     global Qpoll
@@ -336,30 +395,6 @@ def send_next_QnA(raw_emp_phone):
         return
     hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
     send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
-
-
-def get_next_question(raw_emp_phone):
-    global Qpoll
-    emp_phone = format_phone_for_selection(raw_emp_phone)
-    is_emp_in_poll = False
-    emp_phone = emp_phone.split('@')[0]
-    for d in Qpoll:
-        if d['emp'] == emp_phone and d['questions'] != []:
-            is_emp_in_poll = True
-            return {
-                'Q': d['questions'][0][1],
-                'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
-                'id': d['questions'][0][0]
-            }
-    if not is_emp_in_poll:
-        finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
-
-
-def finish_QnA(emp_phone, customer_phone):
-    send_private_txt_msg(msg="Thank you! that's all for today", to=emp_phone)
-    hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),
-                     stage=SESSION_DICT['SendMenu'])
-    send_daily_report(raw_customer_phone=customer_phone)
 
 
 def send_daily_report(raw_customer_phone):
@@ -388,27 +423,6 @@ def send_admin_menu(raw_phone_number):
 
 
 # endregion
-
-def timluli_is_locked():
-    if last_sent_to_timluli is None:
-        return False
-    return True
-
-
-def send_to_timluli(json_data):
-    global last_sent_to_timluli
-    keys = last_sent_to_timluli_keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
-    while timluli_is_locked():
-        continue
-    last_sent_to_timluli = dict.fromkeys(keys)
-    last_sent_to_timluli.update({
-        'msg_id': json_data['id'],
-        'conv_id': json_data['conv_id'],
-        'quoted_phone': json_data['user']['phone'],
-        'quoter_phone': json_data['quoter'],
-        'timestamp': json_data['timestamp']
-    })
-    forward_msg(msg=json_data['id'], to=timluli)
 
 
 @app.route("/", methods=["POST"])
