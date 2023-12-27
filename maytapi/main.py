@@ -24,6 +24,7 @@ TRIAL_GROUP_ID = os.getenv("GROUP_ID")
 ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
 SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
+CREATE_GROUP_SUFFIX = 'createGroup'
 
 ROBOT_SIGN = '🤖'
 timluli = '972537750144'
@@ -33,6 +34,7 @@ group_chat_type = 'g'
 hdb = Database.Database()
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
+last_sent_to_timluli = None
 Qpoll = None
 
 
@@ -45,7 +47,8 @@ def execute_post(body, url_suffix):
         response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
         response.raise_for_status()  # Raise an error for bad responses
         print("Response:", response.json())
-        return response.json()['data']['id']
+        if url_suffix is CREATE_GROUP_SUFFIX:
+            return response.json()['data']['id']
     except requests.exceptions.HTTPError as errh:
         print("HTTP Error:", errh)
     except requests.exceptions.ConnectionError as errc:
@@ -69,7 +72,7 @@ def create_group(name, numbers):
         "name": name,
         "numbers": numbers
     }
-    execute_post(body=body, url_suffix='createGroup')
+    execute_post(body=body, url_suffix=CREATE_GROUP_SUFFIX)
 
 
 def send_msg(body):
@@ -87,9 +90,10 @@ def format_phone_for_sending(phone_number):
 def format_phone_for_selection(raw_phone_number):
     if raw_phone_number is None:
         return
+    phone_number = raw_phone_number
     # Remove leading '+' if present
     if raw_phone_number.startswith('+'):
-        phone_number = raw_phone_number.lstrip('+')
+        phone_number = phone_number.lstrip('+')
 
     # Check if the number starts with '972' and remove it
     if phone_number.startswith('972'):
@@ -111,7 +115,7 @@ def is_angel(raw_phone_number, group_id=None):
     formatted_phone = format_phone_for_selection(raw_phone_number)
     sys_id = hdb.get_system_id(phone_number=formatted_phone)
     if hdb.get_premission(phone_number=formatted_phone) >= 1 \
-            and sys_id in hdb.get_employees_from_conv(conv_id=group_id):  # employee in group with premission
+            and sys_id in hdb.get_employees_from_conv(conv_id=group_id):  # employee in group with permission
         return True
     return False
 
@@ -119,7 +123,7 @@ def is_angel(raw_phone_number, group_id=None):
 def is_customer(raw_phone_number, group_id=None):
     if group_id is None:
         return False
-    formatted_phone = format_phone_for_selection(phone_number=raw_phone_number)
+    formatted_phone = format_phone_for_selection(raw_phone_number=raw_phone_number)
     sys_id = hdb.get_system_id(formatted_phone)
     if sys_id == hdb.get_customer_from_conv(group_id):  # customer is in conversation
         return True
@@ -129,7 +133,7 @@ def is_customer(raw_phone_number, group_id=None):
 def is_angel_ack(txt, emp_phone, customer_phone, group_id):
     """
     if msg is ack sign
-    AND quoter is angel from the relevant group with premission
+    AND quoter is angel from the relevant group with permission
     AND quoted is customer of the relevant group
 
     """
@@ -153,14 +157,21 @@ def handle_group_msg(json_data):
         if _type == "text" and 'quoted' in json_data:
             msg_id = json_data["quoted"]["id"]
             group_id = json_data["conversation"]
-            angel_phone = json_data["user"]["phone"]
-            customer_phone = json_data["quoted"]["user"]["phone"]
-            if is_angel_ack(message["text"], angel_phone, customer_phone, group_id):
-                hdb.insert_message(msg_id, group_id,
-                                   format_phone_for_selection(customer_phone),
-                                   format_phone_for_selection(angel_phone),
-                                   json_data["quoted"]["text"], json_data["timestamp"])
+            raw_angel_phone = json_data["user"]["phone"]
+            raw_customer_phone = json_data["quoted"]["user"]["phone"]
+            if is_angel_ack(txt=message["text"], emp_phone=raw_angel_phone, customer_phone=raw_customer_phone,
+                            group_id=group_id):
                 react_robot(group_id=group_id, msg_id=msg_id)
+                if json_data['quoted']['type'] == 'ptt':
+                    json_data['quoted']['timestamp'] = json_data['timestamp']
+                    json_data['quoted']['quoter'] = raw_angel_phone
+                    json_data['quoted']['conv_id'] = group_id
+                    send_to_timluli(json_data=json_data['quoted'])
+                else:
+                    hdb.insert_message(msg_id=msg_id, conv_id=group_id,
+                                       quoted_phone=format_phone_for_selection(raw_phone_number=raw_customer_phone),
+                                       quoter_phone=format_phone_for_selection(raw_phone_number=raw_angel_phone),
+                                       msg=json_data["quoted"]["text"], time_stamp=json_data["timestamp"])
 
 
 def react_robot(group_id, msg_id):
@@ -193,11 +204,12 @@ def forward_msg(msg, to):
         "message": msg,
         "forward_caption": True
     }
+    send_msg(body=body)
 
 
 def handle_income_private_msg(json_data):
     raw_phone_number = json_data['user']['id']
-    formatted_phone_number = format_phone_for_selection(phone_number=raw_phone_number)
+    formatted_phone_number = format_phone_for_selection(raw_phone_number=raw_phone_number)
 
     sys_id = hdb.get_system_id(phone_number=formatted_phone_number)
     if sys_id is None:
@@ -252,7 +264,7 @@ def pop_question(emp_phone, status):
                     insert_answer(msg_id=answerd[0], status=status)
                     hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
                                         status=status)
-                    hdb.delete_sent_message(nsg_id=answerd_id)  # delete last sent question from DB
+                    hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
                     return
                 index += 1
 
@@ -261,7 +273,7 @@ def insert_answer(msg_id, status):
     if status == 0:
         return
     elif status == 1:
-        hdb.update_msg_status(mdg_id=msg_id)
+        hdb.update_msg_status(msg_id=msg_id)
 
 
 def handle_admin(ses_stage, raw_phone_number):
@@ -287,8 +299,22 @@ def handle_employee(ses_stage, raw_phone_number):
     pass
 
 
+def get_headline_from_timluli(text):
+    return text.split('*')[1]
+
+
+
+def handle_timluli(json_data):
+    global last_sent_to_timluli
+    hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'],conv_id=last_sent_to_timluli['conv_id'],
+                       quoted_phone=last_sent_to_timluli['quoted_phone'],
+                       quoter_phone=last_sent_to_timluli['quoter_phone'],
+                       msg=get_headline_from_timluli(json_data['message']['text']),
+                       time_stamp=last_sent_to_timluli['timestamp'])
+    last_sent_to_timluli=None
+
 def start_QnA():
-    global Qpoll;
+    global Qpoll
     Qpoll = hdb.get_QnA_dict()
     emps_to_ask = hdb.get_QnA_emps()
     for e in emps_to_ask:
@@ -333,7 +359,7 @@ def finish_QnA(emp_phone, customer_phone):
     send_private_txt_msg(msg="Thank you! that's all for today", to=emp_phone)
     hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),
                      stage=SESSION_DICT['SendMenu'])
-    send_daily_report(raw_phone_number=customer_phone)
+    send_daily_report(raw_customer_phone=customer_phone)
 
 
 def send_daily_report(raw_customer_phone):
@@ -363,6 +389,28 @@ def send_admin_menu(raw_phone_number):
 
 # endregion
 
+def timluli_is_locked():
+    if last_sent_to_timluli is None:
+        return False
+    return True
+
+
+def send_to_timluli(json_data):
+    global last_sent_to_timluli
+    keys = last_sent_to_timluli_keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
+    while timluli_is_locked():
+        continue
+    last_sent_to_timluli = dict.fromkeys(keys)
+    last_sent_to_timluli.update({
+        'msg_id': json_data['id'],
+        'conv_id': json_data['conv_id'],
+        'quoted_phone': json_data['user']['phone'],
+        'quoter_phone': json_data['quoter'],
+        'timestamp': json_data['timestamp']
+    })
+    forward_msg(msg=json_data['id'], to=timluli)
+
+
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
@@ -372,9 +420,7 @@ def webhook():
     elif json_data['type'] == 'ack':
         print("message was acked")
     elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us':
-        print("handle text from voice message")
-    elif json_data['message']['type'] == 'ptt':
-        forward_msg(msg=json_data['message']['id'], to=timluli)
+        handle_timluli(json_data=json_data)
     elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
         if conv_type == group_chat_type:
