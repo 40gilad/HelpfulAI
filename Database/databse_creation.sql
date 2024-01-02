@@ -40,7 +40,12 @@ CREATE TABLE customer(
 
     );
    
+CREATE TABLE waiting_for_approve(
+            emp_phone varchar(10) NOT NULL,
+            customer_phone varchar(10) NOT NULL,
 
+            primary key (emp_phone,customer_phone)
+    );
 
 
 CREATE TABLE conversations(

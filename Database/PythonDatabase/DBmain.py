@@ -126,6 +126,11 @@ class Database:
     def insert_board(self):
         print("insert_board")
 
+    def insert_waiting_for_approve(self,emp_number,customer_number):
+        command = "INSERT INTO waiting_for_approve(emp_phone,customer_phone) VALUES (%s,%s)"
+        params = [emp_number,customer_number]
+        self.execute_insertion(command, params)
+
     def insrt_daily_msg(self, msg_id, customer_phone, status=0):
         command = "INSERT INTO daily_answers(msg_id,quoted_phone,status) VALUES (%s,%s,%s)"
         params = [msg_id, customer_phone, status]
@@ -191,7 +196,8 @@ class Database:
             return None
 
     def select_with(self, table_name, phone=None, personal_id=None, name=None, system_id=None,
-                    status=None, conv_id=None, col='*', quoted_phone=None, quoter_phone=None, customer_id=None):
+                    status=None, conv_id=None, col='*', quoted_phone=None, quoter_phone=None, customer_id=None,
+                    emp_phone=None):
         """
         Select table with contrains
 
@@ -223,6 +229,8 @@ class Database:
             conditions["status= %s"] = status
         if customer_id is not None:
             conditions["customer_id=%s"] = customer_id
+        if emp_phone is not None:
+            conditions["emp_phone=%s"] = emp_phone
 
         query, params = self.format_select_query(query, conditions)
         res = self.execute_selection(query, params)
@@ -236,49 +244,56 @@ class Database:
                                      f" inner join messages m on d.msg_id=m.msg_id "
                                      f"where d.quoted_phone=m.quoted_phone and d.status=%s and d.quoted_phone=%s",
                                      params=[status, customer_phone])
-
         if row == None:
             return None
         else:
             return row
 
+
+    def get_customer_waiting_for_approve(self,emp_phone):
+        row=self.select_with(table_name="waiting_for_approve",emp_phone=emp_phone)
+        if row == []:
+            return None
+        else:
+            return row[0][1]
+
     def get_system_id(self, phone_number):
-        row = self.select_with("person", phone=phone_number)
+        row = self.select_with(table_name="person", phone=phone_number)
         if row == []:
             return None
         else:
             return row[0][0]
 
     def get_sent_message(self, emp_phone):
-        row = self.select_with("sent_messages", quoter_phone=emp_phone)
+        row = self.select_with(table_name="sent_messages", quoter_phone=emp_phone)
         if row == []:
             return None
         else:
             return row[0][0]
 
     def get_team_leader_id(self, customer_id):
-        row = self.select_with("conversations", customer_id=customer_id)
+        row = self.select_with(table_name="conversations", customer_id=customer_id)
         if row == []:
             return None
         else:
             return row[0][5]
 
     def get_employees_from_conv(self, conv_id):
-        row = self.select_with("conversations", conv_id=conv_id)
+        row = self.select_with(table_name="conversations", conv_id=conv_id)
         if row == []:
             return None
         else:
             return row[0][3:]
 
     def get_customer_from_conv(self, conv_id):
-        row = self.select_with("conversations", conv_id=conv_id)
+        row = self.select_with(table_name="conversations", conv_id=conv_id)
         if row == []:
             return -1
         else:
             return row[0][2]
 
     def get_conv_name(self, conv_id):
-        row = self.select_with("conversations", conv_id=conv_id)
+        row = self.select_with(table_name="conversations", conv_id=conv_id)
         if row == []:
             return -1
         else:
@@ -294,7 +309,10 @@ class Database:
 
     def get_employee_phone(self,system_id):
         row = self.select_with(table_name="person", system_id=system_id)
-        kaki=1
+        if row == []:
+            return None
+        else:
+            return row[0][4]
 
     def get_premission(self, phone_number):
         return self.get_system_id(self.format_phone(phone_number))
@@ -362,6 +380,15 @@ class Database:
         params = [customer_phone]
         self.execute_update(command, params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
+
+
+    def delete_waiting_for_approve(self,customer_phone):
+        self.execute_update("SET SQL_SAFE_UPDATES = 0")
+        command = f"delete from waiting_for_approve where customer_phone=%s"
+        params = [customer_phone]
+        self.execute_update(command, params)
+        self.execute_update("SET SQL_SAFE_UPDATES = 1")
+
 
     def delete_sent_message(self, msg_id):
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
