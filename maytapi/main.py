@@ -91,10 +91,9 @@ def get_next_question(raw_emp_phone):
 
 
 def finish_QnA(emp_phone, customer_phone):
-    send_private_txt_msg(msg="Thank you! that's all for today", to=emp_phone)
-    hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),
-                     stage=SESSION_DICT['SendMenu'])
-    send_daily_report(raw_customer_phone=customer_phone)
+    send_private_txt_msg(msg="תודה! הנה סיכום היום שלך:", to=[emp_phone])
+    #hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),stage=SESSION_DICT['SendMenu'])
+    send_daily_report(raw_emp_phone=emp_phone,raw_customer_phone=customer_phone)
 
 
 # --------------------------------------------------------------------------------------------------------------------#
@@ -252,6 +251,7 @@ def is_angel_ack(txt, emp_phone, customer_phone, group_id):
             is_customer(raw_phone_number=customer_phone, group_id=group_id):
         return True
 
+
 # --------------------------------------------------------------------------------------------------------------------#
 
 # endregion
@@ -290,12 +290,14 @@ def handle_group_msg(json_data):
 # region Private chat handles
 
 def send_private_txt_msg(msg, to):
-    body = {
-        "type": "text",
-        "message": msg,
-        "to_number": to
-    }
-    send_msg(body=body)
+    if to != []:
+        for t in to:
+            body = {
+                "type": "text",
+                "message": msg,
+                "to_number": t
+            }
+            send_msg(body=body)
 
 
 def handle_income_private_msg(json_data):
@@ -304,12 +306,12 @@ def handle_income_private_msg(json_data):
 
     sys_id = hdb.get_system_id(phone_number=formatted_phone_number)
     if sys_id is None:
-        send_private_txt_msg("You are not registered in the system! Please contact the system administrator",
-                             to=raw_phone_number)
+        send_private_txt_msg("מספר טלפון זה אינו במערכת! אנא פנה למנהל המערכת",
+                             to=[raw_phone_number])
         return
     elif hdb.get_session(phone_number=formatted_phone_number) is None:
         hdb.insert_session(sys_id=sys_id)
-        send_private_txt_msg("you have new session!", to=raw_phone_number)
+        send_private_txt_msg("you have new session!", to=[raw_phone_number])
 
     ses_stage = hdb.get_session(phone_number=formatted_phone_number)[0][1]
     ses_permission = hdb.get_premission(phone_number=formatted_phone_number)
@@ -323,19 +325,24 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
         start_QnA()
         return
     # -----------------------------------------------------------#
-    income_msg = income_msg.lower()
+    # income_msg = income_msg.lower()
     if ses_stage >= SESSION_DICT['IsReadyForQnA']:
-        if income_msg != 'yes' and income_msg != 'no':
-            send_private_txt_msg(msg='please answer only yes or no', to=raw_phone_number)
+        if income_msg != 'כן' and income_msg != 'לא':
+            send_private_txt_msg(msg='בבקשה לענות רק בכן או לא', to=[raw_phone_number])
             return
+        elif ses_stage == SESSION_DICT['ApproveQnA']:
+            is_approved = False
+            if income_msg == "כן":
+                is_approved = True
+                send_daily_report(raw_emp_phone=raw_phone_number,)
         elif ses_stage == SESSION_DICT['QnA']:
             status = 0
-            if income_msg == 'yes':
+            if income_msg == 'כן':
                 status = 1
             pop_question(emp_phone=raw_phone_number, status=status)
         elif ses_stage == SESSION_DICT['IsReadyForQnA']:
-            if income_msg == 'yes':
-                hdb.update_stage(system_id=sys_id, stage=ses_stage + 1)
+            if income_msg == 'כן':
+                hdb.update_stage(system_id=sys_id, stage=SESSION_DICT['QnA'])
         send_next_QnA(raw_emp_phone=raw_phone_number)
 
 
@@ -365,8 +372,8 @@ def handle_employee(ses_stage, raw_phone_number):
 def handle_timluli(json_data):
     global last_sent_to_timluli
     hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
-                       quoted_phone=last_sent_to_timluli['quoted_phone'],
-                       quoter_phone=last_sent_to_timluli['quoter_phone'],
+                       quoted_phone=format_phone_for_selection(last_sent_to_timluli['quoted_phone']),
+                       quoter_phone=format_phone_for_selection(last_sent_to_timluli['quoter_phone']),
                        msg=get_headline_from_timluli(json_data['message']['text']),
                        time_stamp=last_sent_to_timluli['timestamp'])
     last_sent_to_timluli = None
@@ -383,10 +390,8 @@ def start_QnA():
 
 
 def is_ready_for_QnA(emp_phone):
-    send_private_txt_msg(
-        f"*Hi {hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}!*\nare you ready for day "
-        f"summary questions?"
-        , emp_phone)
+    send_private_txt_msg(f" היי *{hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}* \n"
+                         f" מוכנה לסיכום היום שלנו? ",to=[emp_phone])
 
 
 def send_next_QnA(raw_emp_phone):
@@ -394,24 +399,44 @@ def send_next_QnA(raw_emp_phone):
     if question == None:
         return
     hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
-    send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
+    send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}", [raw_emp_phone])
+    # send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
 
 
-def send_daily_report(raw_customer_phone):
-    print("starting daily to number " + raw_customer_phone)
-    customer_phone = format_phone_for_selection(raw_phone_number=raw_customer_phone)
+def send_daily_report(raw_emp_phone,raw_customer_phone, is_approved=False):
+    print(f"starting daily to number {raw_emp_phone}.is approved= {is_approved}")
+    formatted_customer_phone = format_phone_for_selection(raw_phone_number=raw_customer_phone)
+    formatted_emp_phone=format_phone_for_selection(raw_phone_number=raw_emp_phone)
     for status in range(1, -1, -1):
-        msgs = hdb.get_daily(customer_phone=customer_phone, status=status)
+        msgs = hdb.get_daily(customer_phone=formatted_customer_phone, status=status)
         if status == 0:
-            txt = f"*this is what we had to leave for tomorrow:*"
+            txt = f"*זה ישאר למחר:*\n"
         elif status == 1:
-            txt = f"*Hi {hdb.get_buisness_name(raw_customer_phone)}!*\n here is what we did for you today:"
+            if is_approved:
+                txt = f"עבור העסק {hdb.get_buisness_name(formatted_customer_phone)} ביצענו היום : \n"
+            elif not is_approved:
+                txt =f"* היי {hdb.get_buisness_name(formatted_customer_phone)} * \n הנה מה שעשיתי בשבילך היום:"
+                #txt = f"\n. זה מה שעשיתי בשבילך היום: {hdb.get_buisness_name(formatted_customer_phone)}* היי"
+            # txt = f"*Hi {hdb.get_buisness_name(raw_emp_phone)}!*\n here is what we did for you today:"
         counter = 1
         for m in msgs:
             txt = txt + f"\n{counter}. {m[1]}"
             counter = counter + 1
-        send_private_txt_msg(msg=txt, to=raw_customer_phone)
-    hdb.delete_daily(customer_phone=customer_phone)
+        if not is_approved:
+            send_private_txt_msg(msg=txt, to=[raw_emp_phone])
+            hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
+                             stage=SESSION_DICT['ApproveQnA'])
+            send_private_txt_msg(msg="האם את מאשרת את סיכום היום?", to=[raw_emp_phone])
+        elif is_approved:
+            send_private_txt_msg(msg=txt, to=[
+                                              hdb.get_employee_phone(
+                                                  system_id=hdb.get_team_leader_id(
+                                                      customer_id=hdb.get_system_id(
+                                                          phone_number=formatted_customer_phone
+                                                      )))])
+            hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
+                             stage=SESSION_DICT['ApproveQnA'])
+            hdb.delete_daily(customer_phone=formatted_customer_phone)
 
 
 # endregion
@@ -447,4 +472,5 @@ def webhook():
 
 
 if __name__ == '__main__':
+    start_QnA()
     app.run()
