@@ -74,7 +74,9 @@ class Database:
             self.cursor = self.db.cursor()
             self.psuccess("Helpful database is connected!")
 
-    def load_environment(self, path='..\Database\PythonDatabase\DBhelpful.env'):
+    def load_environment(self, path=None):
+        if path is None:
+            path = r'C:\Users\40gil\Desktop\HelpfulAI\Database\PythonDatabase\DBhelpful.env'
         try:
             load_dotenv(dotenv_path=path)
             host = os.getenv('HOST')
@@ -400,7 +402,7 @@ class Database:
 
 
 if __name__ == "__main__":
-    DBhelpful = Database(is_qa=1)
+    DBhelpful = Database()
     DBhelpful.get_QnA_emps()
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")

@@ -7,9 +7,12 @@ import json
 import os
 from dotenv import load_dotenv
 from datetime import datetime
-
+"""
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
+"""
+sys.path.append(os.path.abspath("C:\\Users\\40gil\\Desktop\\HelpfulAI"))
+from Database.PythonDatabase import DBmain as Database
 
 # endregion
 
