@@ -11,8 +11,8 @@ from datetime import datetime
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
 """
-sys.path.append(os.path.abspath("C:\\Users\\40gil\\Desktop\\HelpfulAI"))
-from Database.PythonDatabase import DBmain as Database
+sys.path.append(r'./../Database/PythonDatabase')
+import DBmain as Database
 
 # endregion
 
@@ -34,7 +34,7 @@ timluli = '972537750144'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
-hdb = Database.Database()
+hdb = Database.Database(env_path=r'C:\Users\40gil\Desktop\Helpful\HelpfulAI\Database\PythonDatabase\DBhelpful.env')
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 last_sent_to_timluli = None
@@ -359,6 +359,9 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
             if income_msg == 'כן':
                 hdb.update_stage(system_id=sys_id, stage=SESSION_DICT['QnA'])
         send_next_QnA(raw_emp_phone=raw_phone_number)
+    else:
+        send_private_txt_msg(msg=f"Helpful Chatbot :)\n hi {hdb.get_employee_name(phone_number=format_phone_for_selection(raw_phone_number=raw_phone_number))}",
+                             to=[raw_phone_number])
 
 
 def handle_admin(ses_stage, raw_phone_number):
@@ -433,8 +436,6 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
             elif not is_approved:
                 txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
                 txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
-                # txt = f"\n. זה מה שעשיתי בשבילך היום: {hdb.get_buisness_name(formatted_customer_phone)}* היי"
-            # txt = f"*Hi {hdb.get_buisness_name(raw_emp_phone)}!*\n here is what we did for you today:"
         counter = 1
         for m in msgs:
             txt = txt + f"\n{counter}. {m[1]}"
@@ -476,7 +477,7 @@ def webhook():
         return jsonify({"error": "Received an error message"}), 400
     elif json_data['type'] == 'ack':
         print("message was acked")
-    elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us':
+    elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us': #returned voice to txt from timluli
         handle_timluli(json_data=json_data)
     elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
@@ -490,5 +491,4 @@ def webhook():
 
 
 if __name__ == '__main__':
-    start_QnA()
     app.run()

@@ -55,7 +55,7 @@ class Database:
 
     # region Init, open and close connection
 
-    def __init__(self, is_qa=None):
+    def __init__(self, is_qa=None,env_path=None):
         """
         Connect to database according to .env file variables.
 
@@ -65,7 +65,8 @@ class Database:
 
         """
         if (not is_qa):
-            self.db = self.connect_to_db(*self.load_environment())
+            print('not is_qa')
+            self.db = self.connect_to_db(*self.load_environment(path=env_path))
         elif (is_qa):
             self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
         if self.db == None:
@@ -76,7 +77,7 @@ class Database:
 
     def load_environment(self, path=None):
         if path is None:
-            path = r'C:\Users\40gil\Desktop\HelpfulAI\Database\PythonDatabase\DBhelpful.env'
+            path = r'DBhelpful.env'
         try:
             load_dotenv(dotenv_path=path)
             host = os.getenv('HOST')
@@ -406,4 +407,3 @@ if __name__ == "__main__":
     DBhelpful.get_QnA_emps()
     if (DBhelpful.close_connection() == False):
         raise Exception("Database was not close properly. some changes may be gone")
-    kaki = 1
