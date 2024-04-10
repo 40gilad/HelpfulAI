@@ -1,4 +1,5 @@
 # region Imports
+import time
 
 from flask import Flask, request, jsonify
 import requests
@@ -6,12 +7,13 @@ import sys
 import json
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime ,timedelta
+import threading
 """
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
 """
-sys.path.append(r'./../Database/PythonDatabase')
+sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import DBmain as Database
 
 # endregion
@@ -34,7 +36,7 @@ timluli = '972537750144'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
 group_chat_type = 'g'
-hdb = Database.Database(env_path=r'C:\Users\40gil\Desktop\Helpful\HelpfulAI\Database\PythonDatabase\DBhelpful.env')
+hdb = Database.Database(env_path=r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env')
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 last_sent_to_timluli = None
@@ -174,6 +176,43 @@ def forward_msg(msg, to):
 
 # --------------------------------------------------------------------------------------------------------------------#
 # ----------------------------------------------------- GENERALS -----------------------------------------------------#
+
+def write_log(json_data):
+    try:
+        with open('log.txt', 'w') as log:
+            kaki = 1
+    except():
+        print("Error! log.txt could not open")
+
+
+def create_log_file():
+    print("Log file doesn't exist. Creating a new one...")
+    with open('log.txt', 'w') as new_log:
+        new_log.write(f"-------------------------     CREATION TIME: {datetime.now()}     -------------------------")
+        new_log.close()
+
+def check_log_file():
+    while True:
+        log_file = "log.txt"
+        if os.path.exists(log_file):
+
+            creation_time = datetime.fromtimestamp(os.path.getctime(log_file))
+            current_date = datetime.now().date()
+
+            # Check if a week has passed since creation
+            print(f"Log file exists since {creation_time.date()}. timedelta: {current_date - creation_time.date()}")
+            if current_date - creation_time.date() >= timedelta(days=7):
+                # Delete the old log file
+                os.remove(log_file)
+                print("Old log file deleted.")
+                create_log_file()
+
+        else:
+            print("Log file doesn't exist.")
+            create_log_file()
+
+        # Check every 24 hours
+        time.sleep(24 * 60 * 60)
 
 def execute_post(body, url_suffix):
     try:
@@ -472,6 +511,7 @@ def send_admin_menu(raw_phone_number):
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
+    write_log(json_data)
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
     if json_data['type'] == 'error':
         return jsonify({"error": "Received an error message"}), 400
@@ -491,4 +531,8 @@ def webhook():
 
 
 if __name__ == '__main__':
-    app.run()
+    #app.run()
+    log_checker_thread = threading.Thread(target=check_log_file)
+    log_checker_thread.start()
+    from waitress import serve
+    serve(app)
