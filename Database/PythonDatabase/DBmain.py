@@ -81,7 +81,7 @@ class Database:
         try:
             load_dotenv(dotenv_path=path)
             host = os.getenv('HOST')
-            user = os.getenv('USER')
+            user = os.getenv('DBUSER')
             password = os.getenv('PASS')
             dbname = os.getenv('DBNAME')
         except Exception as err:
