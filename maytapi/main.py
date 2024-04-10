@@ -56,19 +56,20 @@ def pop_question(emp_phone, status):
     """
     emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
     global Qpoll
-    for d in Qpoll:
-        if d['emp'] == emp_phone:
-            answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
-            index = 0
-            for q in d['questions']:
-                if answerd_id == q[0]:
-                    answerd = d['questions'].pop(index)
-                    insert_answer(msg_id=answerd[0], status=status)
-                    hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
-                                        status=status)
-                    hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
-                    return
-                index += 1
+    if Qpoll is not None:
+        for d in Qpoll:
+            if d['emp'] == emp_phone:
+                answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
+                index = 0
+                for q in d['questions']:
+                    if answerd_id == q[0]:
+                        answerd = d['questions'].pop(index)
+                        insert_answer(msg_id=answerd[0], status=status)
+                        hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
+                                            status=status)
+                        hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
+                        return
+                    index += 1
 
 
 def insert_answer(msg_id, status):
@@ -152,6 +153,8 @@ def create_group(name, numbers):
 def send_msg(body):
     print(f"Request Body {body}")
     execute_post(body=body, url_suffix='sendMessage')
+    write_log(json_data=body,outcome=True)
+
 
 
 def react_robot(group_id, msg_id):
@@ -177,19 +180,37 @@ def forward_msg(msg, to):
 # --------------------------------------------------------------------------------------------------------------------#
 # ----------------------------------------------------- GENERALS -----------------------------------------------------#
 
-def write_log(json_data):
+def write_log(json_data,outcome=False,income=False):
     try:
-        with open('log.txt', 'w') as log:
-            kaki = 1
+        with open('log.txt', 'a') as log:
+            if json_data["type"] == 'text' or json_data["type"] == 'message':
+                if income and 'text' in json_data['message']:
+                    log.write('--------------------------------------------------------------------------------------\n')
+                    log.write(f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
+                    log.write(f"\tMessage: {json_data['message']['text']}\n")
+                elif outcome:
+                    log.write(f"{datetime.now().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
+                    log.write(f"\t Message: {json_data['message']}\n")
     except():
-        print("Error! log.txt could not open")
+        log.write(json_data)
 
 
 def create_log_file():
     print("Log file doesn't exist. Creating a new one...")
     with open('log.txt', 'w') as new_log:
-        new_log.write(f"-------------------------     CREATION TIME: {datetime.now()}     -------------------------")
-        new_log.close()
+        new_log.write(f"-------------------------     CREATION TIME (UTC): {datetime.now().strftime(Tstamp_format)}     -------------------------\n")
+
+
+def trigeer_QnA():
+    while True:
+        current_hour = (time.localtime().tm_hour) + 3 # UTC Time + 3 = israel Summer clock
+        if current_hour == 19:  # Change this to your desired hour
+            start_QnA()
+            print("It's 20:00 ")
+            time.sleep(15 * 60 * 60)  # Sleep for 15 hours
+        else:
+            print(f"It's not 20:00. Waiting for 55 minutes. Current time: {time.strftime('%H:%M:%S')}")
+            time.sleep(55 * 60)  # Sleep for 55 minutes
 
 def check_log_file():
     while True:
@@ -218,9 +239,12 @@ def execute_post(body, url_suffix):
     try:
         response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
         response.raise_for_status()  # Raise an error for bad responses
-        print("Response:", response.json())
+        print(f"{response} \n\t{ response.json()}")
         if url_suffix is CREATE_GROUP_SUFFIX:
-            return response.json()['data']['id']
+            if response.json()['success']==True:
+                return response.json()['data']['id']
+            else:
+                return response.json()
     except requests.exceptions.HTTPError as errh:
         print("HTTP Error:", errh)
     except requests.exceptions.ConnectionError as errc:
@@ -398,9 +422,6 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
             if income_msg == 'כן':
                 hdb.update_stage(system_id=sys_id, stage=SESSION_DICT['QnA'])
         send_next_QnA(raw_emp_phone=raw_phone_number)
-    else:
-        send_private_txt_msg(msg=f"Helpful Chatbot :)\n hi {hdb.get_employee_name(phone_number=format_phone_for_selection(raw_phone_number=raw_phone_number))}",
-                             to=[raw_phone_number])
 
 
 def handle_admin(ses_stage, raw_phone_number):
@@ -481,13 +502,13 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
             counter = counter + 1
         if not is_approved:
             send_private_txt_msg(msg=txt, to=[raw_emp_phone])
-        elif is_approved:
-            send_private_txt_msg(msg=txt, to=[
-                format_phone_for_sending(phone_number=hdb.get_employee_phone(
-                    system_id=hdb.get_team_leader_id(
-                        customer_id=hdb.get_system_id(
-                            phone_number=formatted_customer_phone
-                        ))))])
+        # elif is_approved:
+        #     send_private_txt_msg(msg=txt, to=[
+        #         format_phone_for_sending(phone_number=hdb.get_employee_phone(
+        #             system_id=hdb.get_team_leader_id(
+        #                 customer_id=hdb.get_system_id(
+        #                     phone_number=formatted_customer_phone
+        #                 ))))])
     if not is_approved:
         hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
                          stage=SESSION_DICT['ApproveQnA'])
@@ -511,8 +532,8 @@ def send_admin_menu(raw_phone_number):
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
-    write_log(json_data)
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
+    write_log(json_data=json_data,income=True)
     if json_data['type'] == 'error':
         return jsonify({"error": "Received an error message"}), 400
     elif json_data['type'] == 'ack':
@@ -532,7 +553,8 @@ def webhook():
 
 if __name__ == '__main__':
     #app.run()
-    log_checker_thread = threading.Thread(target=check_log_file)
-    log_checker_thread.start()
     from waitress import serve
+
+    hour_check_thread = threading.Thread(target=trigeer_QnA)
+    #hour_check_thread.start()
     serve(app)
