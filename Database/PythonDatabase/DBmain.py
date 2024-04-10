@@ -176,7 +176,7 @@ class Database:
 
     def insert_message(self, msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp, status=0):
         query = (
-            "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,timestamp,status) VALUES (%s,%s,%s,%s,%s,%s,%s)")
+            "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,ack_timestamp,status) VALUES (%s,%s,%s,%s,%s,%s,%s)")
         params = (msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp, status)
         self.execute_insertion(query, params)
 
