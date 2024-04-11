@@ -7,8 +7,9 @@ import sys
 import json
 import os
 from dotenv import load_dotenv
-from datetime import datetime ,timedelta
+from datetime import datetime, timedelta
 import threading
+
 """
 sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
 from HelpfulAI.Database.PythonDatabase import DBmain as Database
@@ -153,8 +154,7 @@ def create_group(name, numbers):
 def send_msg(body):
     print(f"Request Body {body}")
     execute_post(body=body, url_suffix='sendMessage')
-    write_log(json_data=body,outcome=True)
-
+    write_log(json_data=body, outcome=True)
 
 
 def react_robot(group_id, msg_id):
@@ -180,13 +180,15 @@ def forward_msg(msg, to):
 # --------------------------------------------------------------------------------------------------------------------#
 # ----------------------------------------------------- GENERALS -----------------------------------------------------#
 
-def write_log(json_data,outcome=False,income=False):
+def write_log(json_data, outcome=False, income=False):
     try:
         with open('log.txt', 'a') as log:
             if json_data["type"] == 'text' or json_data["type"] == 'message':
                 if income and 'text' in json_data['message']:
-                    log.write('--------------------------------------------------------------------------------------\n')
-                    log.write(f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
+                    log.write(
+                        '--------------------------------------------------------------------------------------\n')
+                    log.write(
+                        f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
                     log.write(f"\tMessage: {json_data['message']['text']}\n")
                 elif outcome:
                     log.write(f"{datetime.now().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
@@ -198,19 +200,21 @@ def write_log(json_data,outcome=False,income=False):
 def create_log_file():
     print("Log file doesn't exist. Creating a new one...")
     with open('log.txt', 'w') as new_log:
-        new_log.write(f"-------------------------     CREATION TIME (UTC): {datetime.now().strftime(Tstamp_format)}     -------------------------\n")
+        new_log.write(
+            f"-------------------------     CREATION TIME (UTC): {datetime.now().strftime(Tstamp_format)}     -------------------------\n")
 
 
 def trigeer_QnA():
     while True:
-        current_hour = (time.localtime().tm_hour) + 3 # UTC Time + 3 = israel Summer clock
-        if current_hour == 19:  # Change this to your desired hour
+        current_hour = (time.localtime().tm_hour) + 3  # UTC Time + 3 = israel Summer clock
+        if current_hour == 19:  # desired hour to trigger function (will be checked once at 19:00-19:59
             start_QnA()
             print("It's 20:00 ")
             time.sleep(15 * 60 * 60)  # Sleep for 15 hours
         else:
             print(f"It's not 20:00. Waiting for 55 minutes. Current time: {time.strftime('%H:%M:%S')}")
             time.sleep(55 * 60)  # Sleep for 55 minutes
+
 
 def check_log_file():
     while True:
@@ -235,13 +239,14 @@ def check_log_file():
         # Check every 24 hours
         time.sleep(24 * 60 * 60)
 
+
 def execute_post(body, url_suffix):
     try:
         response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
         response.raise_for_status()  # Raise an error for bad responses
-        print(f"{response} \n\t{ response.json()}")
+        print(f"{response} \n\t{response.json()}")
         if url_suffix is CREATE_GROUP_SUFFIX:
-            if response.json()['success']==True:
+            if response.json()['success'] == True:
                 return response.json()['data']['id']
             else:
                 return response.json()
@@ -387,9 +392,13 @@ def handle_income_private_msg(json_data):
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
     # ---------- triggering QnA from admins phone --------------#
-    if sys_id == 1 and income_msg.lower() == "qna":
-        start_QnA()
-        return
+    if sys_id == 1: #talking to gilad
+        if income_msg.lower() == "qna":
+            start_QnA()
+            return
+        elif income_msg.lower() == 'ping':
+            send_private_txt_msg(msg='pong', to=[raw_phone_number])
+            return
     # -----------------------------------------------------------#
     # income_msg = income_msg.lower()
     if ses_stage >= SESSION_DICT['IsReadyForQnA']:
@@ -398,15 +407,15 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
             return
         elif ses_stage == SESSION_DICT['ApproveQnA']:
             if income_msg == "כן":
-                send_private_txt_msg(msg="תודה! אל תשכחי להעביר את הסיכום ללקוח. אני כבר אשלח לכל השאר :)",
+                send_private_txt_msg(msg="תודה! אל תשכחי להעביר את הסיכום ללקוח :)",
                                      to=[raw_phone_number])
-                raw_customer_phone=hdb.get_customer_waiting_for_approve(
-                                      emp_phone=format_phone_for_selection(
-                                          raw_phone_number=raw_phone_number
-                                      ))
+                raw_customer_phone = hdb.get_customer_waiting_for_approve(
+                    emp_phone=format_phone_for_selection(
+                        raw_phone_number=raw_phone_number
+                    ))
                 send_daily_report(raw_emp_phone=raw_phone_number,
                                   raw_customer_phone=raw_customer_phone, is_approved=True)
-            elif income_msg== "לא":
+            elif income_msg == "לא":
                 send_private_txt_msg(msg="אוקיי. יש לתקן את הדוח ולשלוח אותו לראש הצוות וללקוח ", to=raw_phone_number)
 
             hdb.delete_waiting_for_approve(customer_phone=raw_customer_phone)
@@ -491,8 +500,8 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
             txt = f"*זה ישאר למחר:*\n"
         elif status == 1:
             if is_approved:
-                txt= f" * סיכום היום של {hdb.get_employee_name(phone_number=formatted_emp_phone)} * \n"
-                txt =txt+ f"עבור העסק {hdb.get_buisness_name(phone_number=formatted_customer_phone)} ביצענו היום : \n"
+                txt = f" * סיכום היום של {hdb.get_employee_name(phone_number=formatted_emp_phone)} * \n"
+                txt = txt + f"עבור העסק {hdb.get_buisness_name(phone_number=formatted_customer_phone)} ביצענו היום : \n"
             elif not is_approved:
                 txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
                 txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
@@ -533,12 +542,13 @@ def send_admin_menu(raw_phone_number):
 def webhook():
     json_data = request.get_json()
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
-    write_log(json_data=json_data,income=True)
+    write_log(json_data=json_data, income=True)
     if json_data['type'] == 'error':
         return jsonify({"error": "Received an error message"}), 400
     elif json_data['type'] == 'ack':
         print("message was acked")
-    elif 'conversation' in json_data and json_data['conversation'] == '972537750144@c.us': #returned voice to txt from timluli
+    elif 'conversation' in json_data and json_data[
+        'conversation'] == '972537750144@c.us':  #returned voice to txt from timluli
         handle_timluli(json_data=json_data)
     elif json_data['type'] != 'ack':
         conv_type = json_data["conversation"].split('@')[1][0]
@@ -556,5 +566,5 @@ if __name__ == '__main__':
     from waitress import serve
 
     hour_check_thread = threading.Thread(target=trigeer_QnA)
-    #hour_check_thread.start()
+    hour_check_thread.start()
     serve(app)
