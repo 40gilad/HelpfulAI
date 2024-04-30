@@ -1,6 +1,6 @@
 # region Imports
 import time
-
+import random
 from flask import Flask, request, jsonify
 import requests
 import sys
@@ -31,8 +31,9 @@ ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
 SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
 INSTANCE_URL = os.getenv('INSTANCE_URL')
 CREATE_GROUP_SUFFIX = 'createGroup'
+OPENAI_KEY = os.getenv('OPENAI_KEY')
 
-ROBOT_SIGN = '🤖'
+ROBOT_SIGN = ['🤖', '👍🏻', '👍🏼', '👍🏽', '👍']
 timluli = '972537750144'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
@@ -42,14 +43,66 @@ url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
 last_sent_to_timluli = None
 Qpoll = None
+TO_USE_GPT = False
+IS_QA = False
+GPT3 = "gpt-3.5-turbo"
+GPT4 = "gpt-4-0125-preview"
 
 
 # endregion
 
 # region Support functions
 
+# -------------------------------------------------- CHATGPT --------------------------------------------------#
+
+def ask_gepeto(prompt, model=GPT4):
+    # ChatGPT API endpoint
+    endpoint = "https://api.openai.com/v1/chat/completions"
+    # Headers containing the Authorization with your API key
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_KEY}"
+    }
+    # Data payload containing the prompt and other parameters
+    data = {
+        "model": model,  # You can choose different models as per your requirement
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+    try:
+        # Making a POST request to the API
+        response = requests.post(endpoint, json=data, headers=headers)
+        # Check if the request was successful
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            return f"Error: {response.status_code} - {response.text}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def is_task(message):
+    json = {'is_task': False, "task": ""}
+    if message != None or message != "":
+
+        answer = ask_gepeto(prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
+                                   f'i want to know if it contains a task or an action i should do for him.\n'
+                                   f'please reply only with yes or no.')
+        if 'yes' in answer.lower():
+            json['is_task'] = True
+            answer = ask_gepeto(prompt=f'the following message:\n{message}\n'
+                                       f'is a task i need to do.\n'
+                                       f'please summerize the task for me in hebrew')
+            json['task'] = answer
+        return json
+
 
 # -------------------------------------------------- QNA SUPPORTERS --------------------------------------------------#
+
+def utc_plus_3():
+    return datetime.now() + timedelta(hours=3)
+
 
 def pop_question(emp_phone, status):
     """
@@ -118,18 +171,42 @@ def get_headline_from_timluli(text):
 
 def send_to_timluli(json_data):
     global last_sent_to_timluli
-    keys = last_sent_to_timluli_keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
-    while timluli_is_locked():
-        continue
-    last_sent_to_timluli = dict.fromkeys(keys)
-    last_sent_to_timluli.update({
-        'msg_id': json_data['id'],
-        'conv_id': json_data['conv_id'],
-        'quoted_phone': json_data['user']['phone'],
-        'quoter_phone': json_data['quoter'],
-        'timestamp': json_data['timestamp']
-    })
-    forward_msg(msg=json_data['id'], to=timluli)
+    print(f'last send to timluli BEFROE:{last_sent_to_timluli}')
+    global TO_USE_GPT
+    if not TO_USE_GPT:
+        keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
+        wait_counter = 0
+        while timluli_is_locked():
+            print(f'waiting for timluli, counter={wait_counter}')
+            time.sleep(2)
+            wait_counter += 1
+            if wait_counter == 60:  # 2 minutes has passed and still locked
+                last_sent_to_timluli = None
+                break
+        last_sent_to_timluli = dict.fromkeys(keys)
+        last_sent_to_timluli.update({
+            'msg_id': json_data['id'],
+            'conv_id': json_data['conv_id'],
+            'quoted_phone': json_data['user']['phone'],
+            'quoter_phone': json_data['quoter'],
+            'timestamp': json_data['timestamp']
+        })
+        forward_msg(msg=json_data['id'], to=timluli)
+
+    elif TO_USE_GPT:
+        keys = ['msg_id', 'conv_id', 'quoted_phone', 'timestamp']
+        while timluli_is_locked():
+            print('waiting for timluli')
+            time.sleep(2)
+        last_sent_to_timluli = dict.fromkeys(keys)
+        last_sent_to_timluli.update({
+            'msg_id': json_data['message']['id'],
+            'conv_id': json_data['conversation'],
+            'quoted_phone': json_data['user']['phone'],
+            'timestamp': json_data['timestamp']
+        })
+        forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
+    print(f'last send to timluli AFTER:{last_sent_to_timluli}')
 
 
 # --------------------------------------------------------------------------------------------------------------------#
@@ -161,7 +238,7 @@ def react_robot(group_id, msg_id):
     body = {
         "to_number": group_id,
         "type": "reaction",
-        "message": ROBOT_SIGN,
+        "message": ROBOT_SIGN[random.randint(0, len(ROBOT_SIGN) - 1)],
         "reply_to": msg_id
     }
     send_msg(body)
@@ -183,16 +260,20 @@ def forward_msg(msg, to):
 def write_log(json_data, outcome=False, income=False):
     try:
         with open('log.txt', 'a') as log:
-            if json_data["type"] == 'text' or json_data["type"] == 'message':
+            if json_data["type"] == 'text' or json_data["type"] == 'message' or json_data["type"] == 'reaction':
                 if income and 'text' in json_data['message']:
                     log.write(
-                        '--------------------------------------------------------------------------------------\n')
+                        '##################################################################################################\n')
                     log.write(
                         f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
                     log.write(f"\tMessage: {json_data['message']['text']}\n")
                 elif outcome:
-                    log.write(f"{datetime.now().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
+                    log.write(f"{utc_plus_3().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
                     log.write(f"\t Message: {json_data['message']}\n")
+                else:
+                    log.write(
+                        f"\n--------------------------------------------------------------------------------------\n JSON DATA \n\t{json_data}\n --------------------------------------------------------------------------------------\n\n\n")
+
     except():
         log.write(json_data)
 
@@ -207,9 +288,9 @@ def create_log_file():
 def trigeer_QnA():
     while True:
         current_hour = (time.localtime().tm_hour) + 3  # UTC Time + 3 = israel Summer clock
-        if current_hour == 19:  # desired hour to trigger function (will be checked once at 19:00-19:59
+        if current_hour == 17:  # desired hour to trigger function (will be checked once at 19:00-19:59
             start_QnA()
-            print("It's 20:00 ")
+            print("It's 17:00 ")
             time.sleep(15 * 60 * 60)  # Sleep for 15 hours
         else:
             print(f"It's not 20:00. Waiting for 55 minutes. Current time: {time.strftime('%H:%M:%S')}")
@@ -330,6 +411,11 @@ def is_angel_ack(txt, emp_phone, customer_phone, group_id):
 # region Group chat handlers
 
 def handle_group_msg(json_data):
+    global TO_USE_GPT
+    if TO_USE_GPT:
+        handle_group_msg_gpt(json_data)
+        return
+
     wttype = json_data["type"]
     if wttype == "message":
         message = json_data["message"]
@@ -356,6 +442,37 @@ def handle_group_msg(json_data):
                                        msg=json_data["quoted"]["text"], time_stamp=json_data["timestamp"])
 
 
+def handle_group_msg_gpt(json_data):
+    print(f"handle group msg gpt:\n{json_data}")
+    wttype = json_data["type"]
+    if wttype == "message":
+
+        message = json_data["message"]
+        group_id = json_data["conversation"]
+        msg_id = message["id"]
+        _type = message["type"]
+        raw_customer_phone = json_data["user"]["id"]
+        if not is_customer(raw_phone_number=raw_customer_phone,group_id=json_data['conversation']):
+            return
+        if message["fromMe"]:
+            return
+        if _type == "text":
+            ret_json = is_task(message=message["text"])
+            answer = ret_json["is_task"]
+            print(f'ret_json= {ret_json}')
+            if answer is False:
+                return
+            elif answer is True:
+                react_robot(group_id=group_id, msg_id=msg_id)
+                angel_phone = hdb.get_angle_phone_by_group_id(group_id=group_id)
+                hdb.insert_message(msg_id=msg_id, conv_id=group_id,
+                                   quoted_phone=format_phone_for_selection(raw_phone_number=raw_customer_phone),
+                                   quoter_phone=angel_phone,
+                                   msg=ret_json['task'], time_stamp=json_data["timestamp"])
+        elif _type == "ptt":
+            send_to_timluli(json_data)
+
+
 # endregion
 
 # region Private chat handles
@@ -372,6 +489,7 @@ def send_private_txt_msg(msg, to):
 
 
 def handle_income_private_msg(json_data):
+    write_log(json_data=json_data)
     raw_phone_number = json_data['user']['id']
     formatted_phone_number = format_phone_for_selection(raw_phone_number=raw_phone_number)
 
@@ -392,7 +510,7 @@ def handle_income_private_msg(json_data):
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
     # ---------- triggering QnA from admins phone --------------#
-    if sys_id == 1: #talking to gilad
+    if sys_id == 1:  #talking to gilad
         if income_msg.lower() == "qna":
             start_QnA()
             return
@@ -458,11 +576,24 @@ def handle_employee(ses_stage, raw_phone_number):
 
 def handle_timluli(json_data):
     global last_sent_to_timluli
-    hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
-                       quoted_phone=format_phone_for_selection(last_sent_to_timluli['quoted_phone']),
-                       quoter_phone=format_phone_for_selection(last_sent_to_timluli['quoter_phone']),
-                       msg=get_headline_from_timluli(json_data['message']['text']),
-                       time_stamp=last_sent_to_timluli['timestamp'])
+    global TO_USE_GPT
+    if not TO_USE_GPT:
+        hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
+                           quoter_phone=format_phone_for_selection(last_sent_to_timluli['quoter_phone']),
+                           msg=get_headline_from_timluli(json_data['message']['text']),
+                           time_stamp=last_sent_to_timluli['timestamp'])
+    elif TO_USE_GPT:
+        ret_json = is_task(message=json_data['message']["text"].split('\n\n')[1])
+        answer = ret_json["is_task"]
+        print(f"Accroding to ChatGPT, this message is {answer} task: {json_data['message']['text']}")
+        if answer is True:
+            react_robot(group_id=last_sent_to_timluli['conv_id'], msg_id=last_sent_to_timluli['msg_id'])
+            angel_phone = hdb.get_angle_phone_by_group_id(group_id=last_sent_to_timluli['conv_id'])
+            hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
+                               quoted_phone=format_phone_for_selection(last_sent_to_timluli['quoted_phone']),
+                               quoter_phone=angel_phone,
+                               msg=ret_json['task'],
+                               time_stamp=json_data["timestamp"])
     last_sent_to_timluli = None
 
 
@@ -478,7 +609,10 @@ def start_QnA():
 
 def is_ready_for_QnA(emp_phone):
     send_private_txt_msg(f" היי *{hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}* \n"
-                         f" מוכנה לסיכום היום שלנו? ", to=[emp_phone])
+                         f" זה הבוט של הלפפול :) \n"
+                         f" מוכנה לסיכום היום שלנו? "
+                         f"אני אכתוב לך מה ביקשו ממך במהלך היום ואת תגידי לי אם ביצעת את זה או לא"
+                         f"(יש לענות רק בכן או לא)", to=[emp_phone])
 
 
 def send_next_QnA(raw_emp_phone):
@@ -541,30 +675,68 @@ def send_admin_menu(raw_phone_number):
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
+    write_log(json_data=json_data,income=True)
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
-    write_log(json_data=json_data, income=True)
-    if json_data['type'] == 'error':
-        return jsonify({"error": "Received an error message"}), 400
-    elif json_data['type'] == 'ack':
-        print("message was acked")
-    elif 'conversation' in json_data and json_data[
-        'conversation'] == '972537750144@c.us':  #returned voice to txt from timluli
-        handle_timluli(json_data=json_data)
-    elif json_data['type'] != 'ack':
-        conv_type = json_data["conversation"].split('@')[1][0]
-        if conv_type == group_chat_type:
-            handle_group_msg(json_data=json_data)
-        elif conv_type == private_chat_type:
-            handle_income_private_msg(json_data=json_data)
-    else:
-        return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
-    return jsonify({"success": True}), 200
+    # region QA:
+    if IS_QA:
+        if 'user' not in json_data:
+            return jsonify({"ack": "Received an ack message"}), 200
+        if '972526263862@c.us' == json_data["user"]["id"] or '972537750144@c.us' == json_data["user"]["id"]:
+            if json_data['type'] == 'error':
+                return jsonify({"error": "Received an error message"}), 400
+
+            elif json_data['type'] == 'ack':  # returned acknowledgement from the receiver
+                print("message was acked")
+
+            elif ('conversation' in json_data and json_data['conversation']
+                  == '972537750144@c.us'):  # returned voice to txt from timluli
+                handle_timluli(json_data=json_data)
+
+            elif json_data['type'] != 'ack':  # not ack and not timluli
+                conv_type = json_data["conversation"].split('@')[1][0]
+                if conv_type == group_chat_type:
+                    handle_group_msg(json_data=json_data)
+                elif conv_type == private_chat_type:
+                    handle_income_private_msg(json_data=json_data)
+            else:
+                return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
+            return jsonify({"success": True}), 200
+        else:
+            return jsonify({"Unknown Message ": "Message not from Admin during QA"}), 400
+    # endregion
+    else:  # not qa
+        if 'user' not in json_data:
+            print(json_data)
+            return jsonify({"non-msg": "Received non message"}), 400
+        if json_data['type'] == 'error':
+            print(f'Error:{json_data}')
+            return jsonify({"error": "Received an error message"}), 400
+
+        elif json_data['type'] == 'ack':  # returned acknowledgement from the receiver
+            print("message was acked")
+
+        elif ('conversation' in json_data and json_data['conversation']
+              == '972537750144@c.us'):  # returned voice to txt from timluli
+            handle_timluli(json_data=json_data)
+
+        elif json_data['type'] != 'ack':  # not ack and not timluli
+            conv_type = json_data["conversation"].split('@')[1][0]
+            if conv_type == group_chat_type:
+                handle_group_msg(json_data=json_data)
+            elif conv_type == private_chat_type:
+                handle_income_private_msg(json_data=json_data)
+        else:
+            print(f"unknown{json_data}")
+            return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
+        return jsonify({"success": True}), 200
 
 
 if __name__ == '__main__':
     #app.run()
     from waitress import serve
 
+    TO_USE_GPT = True
+    IS_QA = False
     hour_check_thread = threading.Thread(target=trigeer_QnA)
-    hour_check_thread.start()
+    #hour_check_thread.start()
     serve(app)
