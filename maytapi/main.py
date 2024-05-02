@@ -144,8 +144,10 @@ def get_next_question(raw_emp_phone):
                 'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
                 'id': d['questions'][0][0]
             }
-    if not is_emp_in_poll:
-        finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
+        # for d in Qpoll:
+        #     print(f"{d['emp']}-{d['customer']}")
+        if not is_emp_in_poll:
+            finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
 
 
 def finish_QnA(emp_phone, customer_phone):
@@ -754,9 +756,11 @@ def webhook():
 
 
 if __name__ == '__main__':
+    Qpoll = hdb.get_QnA_dict()
+    emps_to_ask = hdb.get_QnA_emps()
     #app.run()
     from waitress import serve
-
+    #start_QnA()
     TO_USE_GPT = True
     IS_QA = False
 
