@@ -9,12 +9,8 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import threading
-
-"""
-sys.path.append(os.path.abspath("C:\\Users\\40gil\\OneDrive\\Desktop\\Helpful"))
-from HelpfulAI.Database.PythonDatabase import DBmain as Database
-"""
 sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
+import queue
 import DBmain as Database
 
 # endregion
@@ -33,7 +29,7 @@ INSTANCE_URL = os.getenv('INSTANCE_URL')
 CREATE_GROUP_SUFFIX = 'createGroup'
 OPENAI_KEY = os.getenv('OPENAI_KEY')
 
-ROBOT_SIGN = ['🤖', '👍🏻', '👍🏼', '👍🏽', '👍']
+ROBOT_SIGN = ['🤖', '🦿', '🦾']
 timluli = '972537750144'
 Tstamp_format = "%d/%m/%Y %H:%M"
 private_chat_type = 'c'
@@ -41,6 +37,8 @@ group_chat_type = 'g'
 hdb = Database.Database(env_path=r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env')
 url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
 headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
+timluli_queue_size = 30
+timluli_queue = queue.Queue(maxsize=timluli_queue_size)
 last_sent_to_timluli = None
 Qpoll = None
 TO_USE_GPT = False
@@ -170,43 +168,42 @@ def get_headline_from_timluli(text):
 
 
 def send_to_timluli(json_data):
+    global timluli_queue
     global last_sent_to_timluli
-    print(f'last send to timluli BEFROE:{last_sent_to_timluli}')
     global TO_USE_GPT
-    if not TO_USE_GPT:
-        keys = ['msg_id', 'conv_id', 'quoted_phone', 'quoter_phone', 'timestamp']
-        wait_counter = 0
-        while timluli_is_locked():
-            print(f'waiting for timluli, counter={wait_counter}')
-            time.sleep(2)
-            wait_counter += 1
-            if wait_counter == 60:  # 2 minutes has passed and still locked
-                last_sent_to_timluli = None
-                break
-        last_sent_to_timluli = dict.fromkeys(keys)
-        last_sent_to_timluli.update({
-            'msg_id': json_data['id'],
-            'conv_id': json_data['conv_id'],
-            'quoted_phone': json_data['user']['phone'],
-            'quoter_phone': json_data['quoter'],
-            'timestamp': json_data['timestamp']
-        })
-        forward_msg(msg=json_data['id'], to=timluli)
-
-    elif TO_USE_GPT:
+    if TO_USE_GPT:
         keys = ['msg_id', 'conv_id', 'quoted_phone', 'timestamp']
-        while timluli_is_locked():
-            print('waiting for timluli')
-            time.sleep(2)
-        last_sent_to_timluli = dict.fromkeys(keys)
-        last_sent_to_timluli.update({
+        timluli_dict = dict.fromkeys(keys)
+        timluli_dict.update({
             'msg_id': json_data['message']['id'],
             'conv_id': json_data['conversation'],
             'quoted_phone': json_data['user']['phone'],
             'timestamp': json_data['timestamp']
         })
-        forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
+        while timluli_queue.full():
+            forward_to_timluli()
+        timluli_queue.put(timluli_dict)
+    else:
+        send_msg_to_gilad(f"got json data in send_to_timluli func and TO_USE_GPT is {TO_USE_GPT}")
     print(f'last send to timluli AFTER:{last_sent_to_timluli}')
+
+def forward_to_timluli():
+    global timluli_queue
+    global last_sent_to_timluli
+    while timluli_is_locked():
+        time.sleep(5) # wait 5 seconds until next check
+        print("in forward_to_timluli: last_sent_to_timluli is not None")
+    last_sent_to_timluli = timluli_queue.get()
+    forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
+
+def pop_timluli():
+    global timluli_queue
+    while True:
+        if timluli_queue.empty():
+            print ("timluli_queue is empty. will check again in 10 mins")
+            time.sleep(10*60) # wait 10 mins
+        else:
+            forward_to_timluli()
 
 
 # --------------------------------------------------------------------------------------------------------------------#
@@ -293,8 +290,32 @@ def trigeer_QnA():
             print("It's 17:00 ")
             time.sleep(15 * 60 * 60)  # Sleep for 15 hours
         else:
-            print(f"It's not 20:00. Waiting for 55 minutes. Current time: {time.strftime('%H:%M:%S')}")
+            print(f"It's not 20:00. Waiting for 55 minutes. Current time: {current_hour}")
             time.sleep(55 * 60)  # Sleep for 55 minutes
+
+
+def check_db_connection():
+    while True:
+        print("Checking if db is connected...")
+        try:
+            if hdb.check_database_connection():  # db is connected
+                print("Database is connected.")
+                time.sleep(10 * 60 * 60)  # Sleep for 10 hours
+            else:
+                print("Database is not connected. Attempting to reconnect...")
+                hdb.reconnect_to_database(env_path=r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env')
+                if hdb.check_database_connection():  # db is connected after retry
+                    print("Database reconnected successfully.")
+                    time.sleep(10 * 60 * 60)  # Sleep for 10 hours
+                else:
+                    print("Database reconnect failed. Retrying in 10 minutes.")
+                    send_msg_to_gilad(msg="DB is Inactive!!")
+                    time.sleep(10 * 60 * 60)  # Sleep for 10 hours
+        except Exception as e:
+            print("An error occurred:", e)
+            print("Retrying in 10 minutes.")
+            send_msg_to_gilad(msg="Erro while trying to reconnect to DB")
+            time.sleep(10 * 60 * 60)  # Retry after 10 hours
 
 
 def check_log_file():
@@ -452,7 +473,7 @@ def handle_group_msg_gpt(json_data):
         msg_id = message["id"]
         _type = message["type"]
         raw_customer_phone = json_data["user"]["id"]
-        if not is_customer(raw_phone_number=raw_customer_phone,group_id=json_data['conversation']):
+        if not is_customer(raw_phone_number=raw_customer_phone, group_id=json_data['conversation']):
             return
         if message["fromMe"]:
             return
@@ -488,6 +509,10 @@ def send_private_txt_msg(msg, to):
             send_msg(body=body)
 
 
+def send_msg_to_gilad(msg):
+    send_private_txt_msg(msg=msg, to=['972526263862'])
+
+
 def handle_income_private_msg(json_data):
     write_log(json_data=json_data)
     raw_phone_number = json_data['user']['id']
@@ -510,7 +535,7 @@ def handle_income_private_msg(json_data):
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
     # ---------- triggering QnA from admins phone --------------#
-    if sys_id == 1:  #talking to gilad
+    if sys_id == 1 or sys_id == 2:  #talking to gilad
         if income_msg.lower() == "qna":
             start_QnA()
             return
@@ -577,24 +602,21 @@ def handle_employee(ses_stage, raw_phone_number):
 def handle_timluli(json_data):
     global last_sent_to_timluli
     global TO_USE_GPT
-    if not TO_USE_GPT:
-        hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
-                           quoter_phone=format_phone_for_selection(last_sent_to_timluli['quoter_phone']),
-                           msg=get_headline_from_timluli(json_data['message']['text']),
-                           time_stamp=last_sent_to_timluli['timestamp'])
-    elif TO_USE_GPT:
-        ret_json = is_task(message=json_data['message']["text"].split('\n\n')[1])
+    curr_timlul = last_sent_to_timluli
+    last_sent_to_timluli = None
+    if TO_USE_GPT:
+        raw_msg = json_data['message']["text"].split('\n\n')[1]
+        ret_json = is_task(message=raw_msg)
         answer = ret_json["is_task"]
         print(f"Accroding to ChatGPT, this message is {answer} task: {json_data['message']['text']}")
         if answer is True:
-            react_robot(group_id=last_sent_to_timluli['conv_id'], msg_id=last_sent_to_timluli['msg_id'])
-            angel_phone = hdb.get_angle_phone_by_group_id(group_id=last_sent_to_timluli['conv_id'])
-            hdb.insert_message(msg_id=last_sent_to_timluli['msg_id'], conv_id=last_sent_to_timluli['conv_id'],
-                               quoted_phone=format_phone_for_selection(last_sent_to_timluli['quoted_phone']),
+            react_robot(group_id=curr_timlul['conv_id'], msg_id=curr_timlul['msg_id'])
+            angel_phone = hdb.get_angle_phone_by_group_id(group_id=curr_timlul['conv_id'])
+            hdb.insert_message(msg_id=curr_timlul['msg_id'], conv_id=curr_timlul['conv_id'],
+                               quoted_phone=format_phone_for_selection(curr_timlul['quoted_phone']),
                                quoter_phone=angel_phone,
-                               msg=ret_json['task'],
+                               msg=raw_msg,
                                time_stamp=json_data["timestamp"])
-    last_sent_to_timluli = None
 
 
 def start_QnA():
@@ -675,7 +697,7 @@ def send_admin_menu(raw_phone_number):
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
-    write_log(json_data=json_data,income=True)
+    write_log(json_data=json_data, income=True)
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
     # region QA:
     if IS_QA:
@@ -737,6 +759,16 @@ if __name__ == '__main__':
 
     TO_USE_GPT = True
     IS_QA = False
+
+    #check if its time for day conclusion
     hour_check_thread = threading.Thread(target=trigeer_QnA)
-    #hour_check_thread.start()
+    hour_check_thread.start()
+
+    #check if db is connected
+    db_connection_thread = threading.Thread(target=check_db_connection)
+    db_connection_thread.start()
+
+    #handle timluli queue
+    timluli_queue_thread = threading.Thread(target=pop_timluli)
+    timluli_queue_thread.start()
     serve(app)
