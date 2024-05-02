@@ -187,15 +187,22 @@ def send_to_timluli(json_data):
         timluli_queue.put(timluli_dict)
     else:
         send_msg_to_gilad(f"got json data in send_to_timluli func and TO_USE_GPT is {TO_USE_GPT}")
+    if IS_QA:
+        queue_contents = list(timluli_queue.queue)
+
+        # Now you can iterate over the queue contents and print each item
+        for item in queue_contents:
+            print(item)
     print(f'last send to timluli AFTER:{last_sent_to_timluli}')
 
 def forward_to_timluli():
     global timluli_queue
     global last_sent_to_timluli
     while timluli_is_locked():
-        time.sleep(5) # wait 5 seconds until next check
+        time.sleep(10) # wait 10 seconds until next check
         print("in forward_to_timluli: last_sent_to_timluli is not None")
     last_sent_to_timluli = timluli_queue.get()
+    print(f"forwarding to timluli: {last_sent_to_timluli}")
     forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
 
 def pop_timluli():
@@ -203,7 +210,7 @@ def pop_timluli():
     while True:
         if timluli_queue.empty():
             print ("timluli_queue is empty. will check again in 10 mins")
-            time.sleep(10*60) # wait 10 mins
+            time.sleep(2*60) # wait 10 mins
         else:
             forward_to_timluli()
 
@@ -607,8 +614,8 @@ def handle_timluli(json_data):
     curr_timlul = last_sent_to_timluli
     last_sent_to_timluli = None
     if TO_USE_GPT:
-        raw_msg = json_data['message']["text"].split('\n\n')[1]
-        ret_json = is_task(message=raw_msg)
+        raw_msg = json_data['message']["text"] # raw_msg.split('\n\n')[1] is the timlul, raw_msg...[0] is the headline
+        ret_json = is_task(message=raw_msg.split('\n\n')[1])
         answer = ret_json["is_task"]
         print(f"Accroding to ChatGPT, this message is {answer} task: {json_data['message']['text']}")
         if answer is True:
@@ -617,7 +624,7 @@ def handle_timluli(json_data):
             hdb.insert_message(msg_id=curr_timlul['msg_id'], conv_id=curr_timlul['conv_id'],
                                quoted_phone=format_phone_for_selection(curr_timlul['quoted_phone']),
                                quoter_phone=angel_phone,
-                               msg=raw_msg,
+                               msg=raw_msg.split('\n\n')[1],
                                time_stamp=json_data["timestamp"])
 
 
@@ -719,7 +726,7 @@ def webhook():
             elif json_data['type'] != 'ack':  # not ack and not timluli
                 conv_type = json_data["conversation"].split('@')[1][0]
                 if conv_type == group_chat_type:
-                    handle_group_msg(json_data=json_data)
+                    handle_group_msg_gpt(json_data=json_data)
                 elif conv_type == private_chat_type:
                     handle_income_private_msg(json_data=json_data)
             else:
@@ -756,11 +763,8 @@ def webhook():
 
 
 if __name__ == '__main__':
-    Qpoll = hdb.get_QnA_dict()
-    emps_to_ask = hdb.get_QnA_emps()
     #app.run()
     from waitress import serve
-    #start_QnA()
     TO_USE_GPT = True
     IS_QA = False
 
