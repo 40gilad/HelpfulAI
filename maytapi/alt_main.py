@@ -14,6 +14,7 @@ sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import queue
 import DBmain as Database
 
+
 # endregion
 
 # region Singletons
@@ -42,7 +43,6 @@ class Globals(SingletonBase):
     load_dotenv(dotenv_path='Maytapi.env')
     Tstamp_format = "%d/%m/%Y %H:%M"  # globals
     IS_QA = False  # globals
-    SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
@@ -55,7 +55,6 @@ class DatabaseHelper(SingletonBase):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self._initialized = True
-            self.globals = Globals()
             self.hdb = Database.Database(env_path=self.DB_ENV_PATH)
 
 
@@ -64,16 +63,15 @@ class GepetoHelper(SingletonBase):
     GPT3 = "gpt-3.5-turbo"  # globals
     GPT4 = "gpt-4-0125-preview"  # globals
     TO_USE_GPT = False
-    TO_SUMMERIZE=False
+    TO_SUMMERIZE = False
 
-    def __init__(self,to_use_gpt=True,to_summerize=False):
+    def __init__(self, to_use_gpt=True, to_summerize=False):
         if not hasattr(self, '_initialized'):
             self._initialized = True
-            self.TO_SUMMERIZE=to_summerize
+            self.TO_SUMMERIZE = to_summerize
             self.TO_USE_GPT = to_use_gpt
-            self.globals = Globals()
 
-    def __ask_gepeto__(self,prompt, model=GPT4):
+    def __ask_gepeto__(self, prompt, model=GPT4):
         # ChatGPT API endpoint
         endpoint = "https://api.openai.com/v1/chat/completions"
         headers = {
@@ -96,19 +94,20 @@ class GepetoHelper(SingletonBase):
         except Exception as e:
             return f"Error: {str(e)}"
 
-    def is_task(self,message):
+    def is_task(self, message):
         json = {'is_task': False, "task": ""}
-        if message is not None or message != "":
 
+        if message is not None or message != "":
             answer = self.__ask_gepeto__(
                 prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
                        f'i want to know if it contains a task or an action i should do for him.\n'
                        f'please reply only with yes or no.')
+
             if 'yes' in answer.lower() and self.TO_SUMMERIZE:
                 json['is_task'] = True
                 answer = self.__ask_gepeto__(prompt=f'the following message:\n{message}\n'
-                                           f'is a task i need to do.\n'
-                                           f'please summerize the task for me in hebrew')
+                                                    f'is a task i need to do.\n'
+                                                    f'please summerize the task for me in hebrew')
                 json['task'] = answer
             return json
 
@@ -123,17 +122,27 @@ class MaytapiHelper(SingletonBase):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self._initialized = True
-            self.globals = Globals()
             self.url = f"{self.INSTANCE_URL}/{self.PRODUCT_ID}/{self.PHONE_ID}"
             self.headers = {"Content-Type": "application/json", "x-maytapi-key": self.API_TOKEN}
+
+
+class SessionManager(SingletonBase):
+    SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
+
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+
+    def get_dict_val(self, key):
+        # returns value of the key from session dict
+        return self.SESSION_DICT[key]
 
 
 class TimluliHelper(SingletonBase):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self._initialized = True
-            self.globals = Globals()
-            self.timluli_queue = queue.Queue(maxsize=self.globals.TIMLULI_Q_SIZE)
+            self.timluli_queue = queue.Queue(maxsize=Globals().TIMLULI_Q_SIZE)
             self.last_sent_to_timluli = None
 
 
@@ -141,19 +150,86 @@ class ConversationHelper(SingletonBase):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self._initialized = True
-            self.globals = Globals()
             self.ROBOT_SIGN = ['🤖', '🦿', '🦾']  # conversation
             self.private_chat_type = 'c'  # conversation
             self.group_chat_type = 'g'  # conversation
-            self.Qpoll = None  # conversation
+
+
+class DaySummeryHelper(SingletonBase):
+    Qpoll= None
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.db = DatabaseHelper().hdb
+
+
+    def pop_question(self, emp_phone, status):
+        """
+        take question outside Qpoll and insert answer to database
+        """
+        emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
+        if self.Qpoll is not None:
+            for d in self.Qpoll:
+                if d['emp'] == emp_phone:
+                    answerd_id = self.db.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
+                    index = 0
+                    for q in d['questions']:
+                        if answerd_id == q[0]:
+                            answerd = d['questions'].pop(index)
+                            self.insert_answer(msg_id=answerd[0], status=status)
+                            self.db.insrt_daily_msg(msg_id=answerd[0],
+                                               customer_phone=format_phone_for_selection(d['customer']),
+                                               status=status)
+                            self.db.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
+                            return
+                        index += 1
+
+    def start_QnA(self):
+        self.Qpoll = self.db.get_QnA_dict()
+        emps_to_ask = self.db.get_QnA_emps()
+        for e in emps_to_ask:
+            emp_phone = e[0]
+            self.db.update_stage(self.db.get_system_id(phone_number=emp_phone),
+                            stage=SessionManager().get_dict_val(key="IsReadyForQnA"))
+            is_ready_for_QnA(emp_phone=emp_phone)
+
+    def insert_answer(self,msg_id, status):
+        if status == 0:
+            return
+        elif status == 1:
+            self.db.update_msg_status(msg_id=msg_id)
+
+    def get_next_question(raw_emp_phone):
+        emp_phone = format_phone_for_selection(raw_emp_phone)
+        is_emp_in_poll = False
+        emp_phone = emp_phone.split('@')[0]
+        for d in Qpoll:
+            if d['emp'] == emp_phone:
+                raw_customer_phone = d['customer']
+            if d['questions'] != []:
+                is_emp_in_poll = True
+                return {
+                    'Q': d['questions'][0][1],
+                    'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
+                    'id': d['questions'][0][0]
+                }
+            else:
+                break
+            # for d in Qpoll:
+            #     print(f"{d['emp']}-{d['customer']}")
+        if not is_emp_in_poll:
+            finish_QnA(emp_phone=raw_emp_phone,
+                       customer_phone=raw_customer_phone)  # here! customers phone is from d
+
+    def finish_QnA(emp_phone, customer_phone):
+        send_private_txt_msg(msg="תודה! הנה סיכום היום שלך:", to=[emp_phone])
+        # hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),stage=SESSION_DICT['SendMenu'])
+        send_daily_report(raw_emp_phone=emp_phone, raw_customer_phone=customer_phone)
 
 
 # endregion
 
 # region Support functions
-
-# -------------------------------------------------- CHATGPT --------------------------------------------------#
-
 
 
 # -------------------------------------------------- QNA SUPPORTERS --------------------------------------------------#
@@ -162,63 +238,7 @@ def utc_plus_3():
     return datetime.now() + timedelta(hours=3)
 
 
-def pop_question(emp_phone, status):
-    """
-    take question outside Qpoll and insert answer to database
-    """
-    emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
-    global Qpoll
-    if Qpoll is not None:
-        for d in Qpoll:
-            if d['emp'] == emp_phone:
-                answerd_id = hdb.get_sent_message(emp_phone=emp_phone)  # get id of last sent question
-                index = 0
-                for q in d['questions']:
-                    if answerd_id == q[0]:
-                        answerd = d['questions'].pop(index)
-                        insert_answer(msg_id=answerd[0], status=status)
-                        hdb.insrt_daily_msg(msg_id=answerd[0], customer_phone=format_phone_for_selection(d['customer']),
-                                            status=status)
-                        hdb.delete_sent_message(msg_id=answerd_id)  # delete last sent question from DB
-                        return
-                    index += 1
 
-
-def insert_answer(msg_id, status):
-    if status == 0:
-        return
-    elif status == 1:
-        hdb.update_msg_status(msg_id=msg_id)
-
-
-def get_next_question(raw_emp_phone):
-    global Qpoll
-    emp_phone = format_phone_for_selection(raw_emp_phone)
-    is_emp_in_poll = False
-    emp_phone = emp_phone.split('@')[0]
-    for d in Qpoll:
-        if d['emp'] == emp_phone:
-            raw_customer_phone = d['customer']
-        if d['questions'] != []:
-            is_emp_in_poll = True
-            return {
-                'Q': d['questions'][0][1],
-                'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
-                'id': d['questions'][0][0]
-            }
-        else:
-            break
-        # for d in Qpoll:
-        #     print(f"{d['emp']}-{d['customer']}")
-    if not is_emp_in_poll:
-        finish_QnA(emp_phone=raw_emp_phone,
-                   customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
-
-
-def finish_QnA(emp_phone, customer_phone):
-    send_private_txt_msg(msg="תודה! הנה סיכום היום שלך:", to=[emp_phone])
-    # hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),stage=SESSION_DICT['SendMenu'])
-    send_daily_report(raw_emp_phone=emp_phone, raw_customer_phone=customer_phone)
 
 
 # --------------------------------------------------------------------------------------------------------------------#
@@ -445,28 +465,6 @@ def format_phone_for_sending(phone_number):
         return phone_number
 
 
-def format_phone_for_selection(raw_phone_number):
-    if raw_phone_number is None:
-        return
-    phone_number = raw_phone_number
-    # Remove leading '+' if present
-    if raw_phone_number.startswith('+'):
-        phone_number = phone_number.lstrip('+')
-
-    # Check if the number starts with '972' and remove it
-    if phone_number.startswith('972'):
-        phone_number = phone_number[3:]
-
-    # Check if the number starts with '0', if not, add '0' at the beginning
-    if not phone_number.startswith('0'):
-        phone_number = '0' + phone_number
-
-    if phone_number.endswith('@c.us'):
-        phone_number = phone_number[:10]
-
-    return phone_number
-
-
 def is_angel(raw_phone_number, group_id=None):
     if group_id is None:
         return False
@@ -533,9 +531,9 @@ def handle_group_msg(json_data):
                     json_data['quoted']['conv_id'] = group_id
                     send_to_timluli(json_data=json_data['quoted'])
                 else:
-                    hdb.insert_message(msg_id=msg_id, conv_id=group_id,
-                                       quoted_phone=format_phone_for_selection(raw_phone_number=raw_customer_phone),
-                                       quoter_phone=format_phone_for_selection(raw_phone_number=raw_angel_phone),
+                    DatabaseHelper().hdb.insert_message(msg_id=msg_id, conv_id=group_id,
+                                       quoted_phone=raw_customer_phone,
+                                       quoter_phone=raw_angel_phone,
                                        msg=json_data["quoted"]["text"], time_stamp=json_data["timestamp"])
 
 
@@ -577,6 +575,7 @@ def handle_group_msg_gpt(json_data):
 def send_private_txt_msg(msg, to):
     if to != []:
         for t in to:
+            format_phone_for_sending(t)
             body = {
                 "type": "text",
                 "message": msg,
@@ -592,7 +591,6 @@ def send_msg_to_gilad(msg):
 def handle_income_private_msg(json_data):
     write_log(json_data=json_data)
     raw_phone_number = json_data['user']['id']
-    formatted_phone_number = format_phone_for_selection(raw_phone_number=raw_phone_number)
 
     sys_id = hdb.get_system_id(phone_number=formatted_phone_number)
     if sys_id is None:
@@ -693,16 +691,6 @@ def handle_timluli(json_data):
                                quoter_phone=angel_phone,
                                msg=raw_msg.split('\n\n')[1],
                                time_stamp=json_data["timestamp"])
-
-
-def start_QnA():
-    global Qpoll
-    Qpoll = hdb.get_QnA_dict()
-    emps_to_ask = hdb.get_QnA_emps()
-    for e in emps_to_ask:
-        emp_phone = e[0]
-        hdb.update_stage(hdb.get_system_id(phone_number=emp_phone), stage=SESSION_DICT['IsReadyForQnA'])
-        is_ready_for_QnA(format_phone_for_sending(phone_number=emp_phone))
 
 
 def is_ready_for_QnA(emp_phone):
