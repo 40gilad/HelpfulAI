@@ -1,3 +1,5 @@
+import time
+
 import mysql.connector
 import os
 from dotenv import load_dotenv
@@ -32,22 +34,24 @@ class Database:
             query += " WHERE " + " AND ".join(query_conditions)
         return [query, query_params]
 
-    def format_phone(self, phone_number):
-        """Formats a phone number to start with `0` if it starts with `+972`.
+    def format_phone_for_selection(self,raw_phone_number):
+        if raw_phone_number is None:
+            return
+        phone_number = raw_phone_number
+        # Remove leading '+' if present
+        if raw_phone_number.startswith('+'):
+            phone_number = phone_number.lstrip('+')
 
-        Args:
-          phone_number: A string representing a phone number.
+        # Check if the number starts with '972' and remove it
+        if phone_number.startswith('972'):
+            phone_number = phone_number[3:]
 
-        Returns:
-          A string representing the formatted phone number.
-        """
-
-        # Remove any whitespace or hyphens from the phone number.
-        phone_number = phone_number.strip().replace('whatsapp:', '').replace('-', '').replace(' ', '')
-        # If the phone number starts with `+972`, remove the `+` and prepend a `0`.
-        if phone_number.startswith('+972'):
-            phone_number = phone_number[4:]
+        # Check if the number starts with '0', if not, add '0' at the beginning
+        if not phone_number.startswith('0'):
             phone_number = '0' + phone_number
+
+        if phone_number.endswith('@c.us'):
+            phone_number = phone_number[:10]
 
         return phone_number
 
@@ -55,7 +59,7 @@ class Database:
 
     # region Init, open and close connection
 
-    def __init__(self, is_qa=None,env_path=None):
+    def __init__(self, is_qa=None, env_path=None):
         """
         Connect to database according to .env file variables.
 
@@ -65,7 +69,7 @@ class Database:
 
         """
         if (not is_qa):
-            print('not is_qa')
+            print('DBmain: not is_qa')
             self.db = self.connect_to_db(*self.load_environment(path=env_path))
         elif (is_qa):
             self.db = self.connect_to_db(*self.load_environment(path="DBhelpful.env"))
@@ -129,17 +133,21 @@ class Database:
     def insert_board(self):
         print("insert_board")
 
-    def insert_waiting_for_approve(self,emp_number,customer_number):
+    def insert_waiting_for_approve(self, emp_number, customer_number):
+        customer_number=self.format_phone_for_selection(customer_number)
+        emp_number = self.format_phone_for_selection(emp_number)
         command = "INSERT INTO waiting_for_approve(emp_phone,customer_phone) VALUES (%s,%s)"
-        params = [emp_number,customer_number]
+        params = [emp_number, customer_number]
         self.execute_insertion(command, params)
 
     def insrt_daily_msg(self, msg_id, customer_phone, status=0):
+        customer_phone=self.format_phone_for_selection(customer_phone)
         command = "INSERT INTO daily_answers(msg_id,quoted_phone,status) VALUES (%s,%s,%s)"
         params = [msg_id, customer_phone, status]
         self.execute_insertion(command, params)
 
     def insert_sent_message(self, msg_id, emp_phone):
+        emp_phone=self.format_phone_for_selection(emp_phone)
         command = "INSERT INTO sent_messages(msg_id,quoter_phone) VALUES (%s,%s)"
         params = [msg_id, emp_phone]
         self.execute_insertion(command, params)
@@ -148,16 +156,20 @@ class Database:
         print("is insert role needed? ")
 
     def insert_conversation(self, conv_id, conv_name, customer_phone, emp_phone):
+        customer_phone=self.format_phone_for_selection(customer_phone)
+        emp_phone = self.format_phone_for_selection(emp_phone)
         command = ("INSERT INTO conversations(conv_id,conv_name,customer_id,employee_id) VALUES (%s,%s,%s,%s)")
         params = (conv_id, conv_name, self.get_system_id(customer_phone), self.get_system_id(emp_phone))
         self.execute_insertion(command, params)
 
     def insert_person(self, _id, name, email, phone):
+        phone=self.format_phone_for_selection(phone)
         command = ("INSERT INTO person(person_id,person_name,email,phone) VALUES (%s,%s,%s,%s)")
         params = (_id, name, email, phone)
         self.execute_insertion(command, params)
 
     def insert_employee(self, _id, name, email, phone, role="employee"):
+        phone=self.format_phone_for_selection(phone)
         self.insert_person(_id, name, email, phone)
         command = ("INSERT INTO employee(system_id, premission) "
                    "SELECT "
@@ -167,6 +179,7 @@ class Database:
         self.execute_insertion(command, params)
 
     def insert_customer(self, _id, name, email, phone, buisness_name):
+        phone=self.format_phone_for_selection(phone)
         self.insert_person(_id, name, email, phone)
         query = ("INSERT INTO customer(system_id, buisness_name) "
                  "SELECT "
@@ -175,6 +188,8 @@ class Database:
         self.execute_insertion(query, params)
 
     def insert_message(self, msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp, status=0):
+        quoted_phone=self.format_phone_for_selection(quoted_phone)
+        quoter_phone=self.format_phone_for_selection(quoter_phone)
         query = (
             "INSERT INTO messages(msg_id,conv_id,quoted_phone,quoter_phone,content,ack_timestamp,status) VALUES (%s,%s,%s,%s,%s,%s,%s)")
         params = (msg_id, conv_id, quoted_phone, quoter_phone, msg, time_stamp, status)
@@ -214,6 +229,7 @@ class Database:
         :return: [tuples]
         """
 
+        phone = self.format_phone_for_selection(phone)
         query = f"SELECT {col} FROM {table_name}"
         conditions = {}
         if name is not None:
@@ -243,6 +259,7 @@ class Database:
         return res
 
     def get_daily(self, customer_phone, status=1):
+        customer_phone = self.format_phone_for_selection(customer_phone)
         row = self.execute_selection(f"select d.quoted_phone ,m.content ,d.status from daily_answers d"
                                      f" inner join messages m on d.msg_id=m.msg_id "
                                      f"where d.quoted_phone=m.quoted_phone and d.status=%s and d.quoted_phone=%s",
@@ -252,9 +269,8 @@ class Database:
         else:
             return row
 
-
-    def get_customer_waiting_for_approve(self,emp_phone):
-        row=self.select_with(table_name="waiting_for_approve",emp_phone=emp_phone)
+    def get_customer_waiting_for_approve(self, emp_phone):
+        row = self.select_with(table_name="waiting_for_approve", emp_phone=emp_phone)
         if row == []:
             return None
         else:
@@ -266,6 +282,14 @@ class Database:
             return None
         else:
             return row[0][0]
+
+    def get_angle_phone_by_group_id(self, group_id):
+        system_id = self.select_with(table_name="conversations", col='employee_id', conv_id=group_id)
+        if system_id != []:
+            system_id = system_id[0][0]
+        else:
+            return None
+        return self.get_employee_phone(system_id=system_id)
 
     def get_sent_message(self, emp_phone):
         row = self.select_with(table_name="sent_messages", quoter_phone=emp_phone)
@@ -310,7 +334,7 @@ class Database:
             return row[0][2]
         return row[0][2].split(' ')[0]
 
-    def get_employee_phone(self,system_id):
+    def get_employee_phone(self, system_id):
         row = self.select_with(table_name="person", system_id=system_id)
         if row == []:
             return None
@@ -318,7 +342,7 @@ class Database:
             return row[0][4]
 
     def get_premission(self, phone_number):
-        return self.get_system_id(self.format_phone(phone_number))
+        return self.get_system_id(self.format_phone_for_selection(phone_number))
 
     def get_QnA_dict(self):
         nums = self.execute_selection(
@@ -340,7 +364,8 @@ class Database:
 
     def get_buisness_name(self, phone_number):
         return \
-        self.select_with(table_name="customer", system_id=self.get_system_id(phone_number), col='buisness_name')[0][0]
+            self.select_with(table_name="customer", system_id=self.get_system_id(phone_number), col='buisness_name')[0][
+                0]
 
     # endregion
 
@@ -384,14 +409,12 @@ class Database:
         self.execute_update(command, params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
 
-
-    def delete_waiting_for_approve(self,customer_phone):
+    def delete_waiting_for_approve(self, customer_phone):
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
         command = f"delete from waiting_for_approve where customer_phone=%s"
         params = [customer_phone]
         self.execute_update(command, params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
-
 
     def delete_sent_message(self, msg_id):
         self.execute_update("SET SQL_SAFE_UPDATES = 0")
@@ -399,7 +422,34 @@ class Database:
         params = [msg_id]
         self.execute_update(command, params)
         self.execute_update("SET SQL_SAFE_UPDATES = 1")
+
     # endregion
+
+    def reconnect_to_database(self, env_path):
+        max_retries = 3
+        retry_delay = 5  # seconds
+        retries = 0
+        while retries < max_retries:
+            self.db = self.connect_to_db(*self.load_environment(path=env_path))
+            if self.db is None:
+                self.perror("Error connecting to Helpful database")
+                retries += 1
+                time.sleep(retry_delay)
+            else:
+                self.cursor = self.db.cursor()
+                self.psuccess("Helpful database is connected!")
+                break
+        print("Unable to reconnect to the database after multiple attempts.")
+
+    def check_database_connection(self):
+        conn = self.db
+        # Check if the connection is alive
+        if conn.is_connected():
+            print("Database connection is active.")
+            return True
+        else:
+            print("Database connection is not active.")
+            return False
 
 
 if __name__ == "__main__":
