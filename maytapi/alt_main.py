@@ -9,76 +9,143 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import threading
+
 sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import queue
 import DBmain as Database
 
 # endregion
 
-# region Globals and initializations
+# region Singletons
 
-class Globals:
-    _instance = None
-    _lock = threading.Lock()
+class SingletonBase:
+    _instances = {}
+    _locks = {}
 
     def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            with cls._lock:
-                if not cls._instance:
-                    cls._instance = super(Globals, cls).__new__(cls, *args, **kwargs)
-                    cls._instance._initialized = False
-        return cls._instance
+        if cls not in cls._instances:
+            with cls._get_lock():
+                if cls not in cls._instances:
+                    cls._instances[cls] = super(SingletonBase, cls).__new__(cls, *args, **kwargs)
+        return cls._instances[cls]
+
+    @classmethod
+    def _get_lock(cls):
+        if cls not in cls._locks:
+            cls._locks[cls] = threading.Lock()
+        return cls._locks[cls]
+
+
+class Globals(SingletonBase):
+    TIMLULI_Q_SIZE = 30
+    app = Flask(__name__)
+    load_dotenv(dotenv_path='Maytapi.env')
+    Tstamp_format = "%d/%m/%Y %H:%M"  # globals
+    IS_QA = False  # globals
+    SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
 
     def __init__(self):
-        # Ensure initialization happens only once
-        if not self._initialized:
-            # Initialize your variables here
-            self.variable1 = None
-            self.variable2 = None
-            # ...
+        if not hasattr(self, '_initialized'):
             self._initialized = True
 
-    def set_variable1(self, value):
-        self.variable1 = value
 
-    def get_variable1(self):
-        return self.variable1
+class DatabaseHelper(SingletonBase):
+    DB_ENV_PATH = r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env'  # DB
 
-    def set_variable2(self, value):
-        self.variable2 = value
-
-    def get_variable2(self):
-        return self.variable2
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.globals = Globals()
+            self.hdb = Database.Database(env_path=self.DB_ENV_PATH)
 
 
-app = Flask(__name__)
-load_dotenv(dotenv_path='Maytapi.env')
-PRODUCT_ID = os.getenv("PRODUCT_ID")
-PHONE_ID = os.getenv("PHONE_ID")
-API_TOKEN = os.getenv("TOKEN")
-TRIAL_GROUP_ID = os.getenv("GROUP_ID")
-ANGEL_SIGN = os.getenv("ACK_SIGN").split(',')
-SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
-INSTANCE_URL = os.getenv('INSTANCE_URL')
-CREATE_GROUP_SUFFIX = 'createGroup'
-OPENAI_KEY = os.getenv('OPENAI_KEY')
+class GepetoHelper(SingletonBase):
+    OPENAI_KEY = os.getenv('OPENAI_KEY')
+    GPT3 = "gpt-3.5-turbo"  # globals
+    GPT4 = "gpt-4-0125-preview"  # globals
+    TO_USE_GPT = False
+    TO_SUMMERIZE=False
 
-ROBOT_SIGN = ['🤖', '🦿', '🦾']
-timluli = '972537750144'
-Tstamp_format = "%d/%m/%Y %H:%M"
-private_chat_type = 'c'
-group_chat_type = 'g'
-hdb = Database.Database(env_path=r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env')
-url = f"{INSTANCE_URL}/{PRODUCT_ID}/{PHONE_ID}"
-headers = {"Content-Type": "application/json", "x-maytapi-key": API_TOKEN, }
-timluli_queue_size = 30
-timluli_queue = queue.Queue(maxsize=timluli_queue_size)
-last_sent_to_timluli = None
-Qpoll = None
-TO_USE_GPT = False
-IS_QA = False
-GPT3 = "gpt-3.5-turbo"
-GPT4 = "gpt-4-0125-preview"
+    def __init__(self,to_use_gpt=True,to_summerize=False):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.TO_SUMMERIZE=to_summerize
+            self.TO_USE_GPT = to_use_gpt
+            self.globals = Globals()
+
+    def __ask_gepeto__(self,prompt, model=GPT4):
+        # ChatGPT API endpoint
+        endpoint = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.OPENAI_KEY}"
+        }
+        data = {
+            "model": model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+        try:
+            response = requests.post(endpoint, json=data, headers=headers)
+            # Check if the request was successful
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                return f"Error: {response.status_code} - {response.text}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    def is_task(self,message):
+        json = {'is_task': False, "task": ""}
+        if message is not None or message != "":
+
+            answer = self.__ask_gepeto__(
+                prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
+                       f'i want to know if it contains a task or an action i should do for him.\n'
+                       f'please reply only with yes or no.')
+            if 'yes' in answer.lower() and self.TO_SUMMERIZE:
+                json['is_task'] = True
+                answer = self.__ask_gepeto__(prompt=f'the following message:\n{message}\n'
+                                           f'is a task i need to do.\n'
+                                           f'please summerize the task for me in hebrew')
+                json['task'] = answer
+            return json
+
+
+class MaytapiHelper(SingletonBase):
+    PRODUCT_ID = os.getenv("PRODUCT_ID")  # maytapi
+    PHONE_ID = os.getenv("PHONE_ID")  # maytapi
+    API_TOKEN = os.getenv("TOKEN")  # maytapi
+    INSTANCE_URL = os.getenv('INSTANCE_URL')
+    CREATE_GROUP_SUFFIX = 'createGroup'
+
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.globals = Globals()
+            self.url = f"{self.INSTANCE_URL}/{self.PRODUCT_ID}/{self.PHONE_ID}"
+            self.headers = {"Content-Type": "application/json", "x-maytapi-key": self.API_TOKEN}
+
+
+class TimluliHelper(SingletonBase):
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.globals = Globals()
+            self.timluli_queue = queue.Queue(maxsize=self.globals.TIMLULI_Q_SIZE)
+            self.last_sent_to_timluli = None
+
+
+class ConversationHelper(SingletonBase):
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.globals = Globals()
+            self.ROBOT_SIGN = ['🤖', '🦿', '🦾']  # conversation
+            self.private_chat_type = 'c'  # conversation
+            self.group_chat_type = 'g'  # conversation
+            self.Qpoll = None  # conversation
 
 
 # endregion
@@ -87,47 +154,6 @@ GPT4 = "gpt-4-0125-preview"
 
 # -------------------------------------------------- CHATGPT --------------------------------------------------#
 
-def ask_gepeto(prompt, model=GPT4):
-    # ChatGPT API endpoint
-    endpoint = "https://api.openai.com/v1/chat/completions"
-    # Headers containing the Authorization with your API key
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_KEY}"
-    }
-    # Data payload containing the prompt and other parameters
-    data = {
-        "model": model,  # You can choose different models as per your requirement
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-    try:
-        # Making a POST request to the API
-        response = requests.post(endpoint, json=data, headers=headers)
-        # Check if the request was successful
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
-        else:
-            return f"Error: {response.status_code} - {response.text}"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def is_task(message):
-    json = {'is_task': False, "task": ""}
-    if message != None or message != "":
-
-        answer = ask_gepeto(prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
-                                   f'i want to know if it contains a task or an action i should do for him.\n'
-                                   f'please reply only with yes or no.')
-        if 'yes' in answer.lower():
-            json['is_task'] = True
-            answer = ask_gepeto(prompt=f'the following message:\n{message}\n'
-                                       f'is a task i need to do.\n'
-                                       f'please summerize the task for me in hebrew')
-            json['task'] = answer
-        return json
 
 
 # -------------------------------------------------- QNA SUPPORTERS --------------------------------------------------#
@@ -172,7 +198,7 @@ def get_next_question(raw_emp_phone):
     emp_phone = emp_phone.split('@')[0]
     for d in Qpoll:
         if d['emp'] == emp_phone:
-            raw_customer_phone=d['customer']
+            raw_customer_phone = d['customer']
         if d['questions'] != []:
             is_emp_in_poll = True
             return {
@@ -185,7 +211,8 @@ def get_next_question(raw_emp_phone):
         # for d in Qpoll:
         #     print(f"{d['emp']}-{d['customer']}")
     if not is_emp_in_poll:
-        finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(raw_customer_phone)) # here! customers phone is from d
+        finish_QnA(emp_phone=raw_emp_phone,
+                   customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
 
 
 def finish_QnA(emp_phone, customer_phone):
@@ -233,22 +260,24 @@ def send_to_timluli(json_data):
             print(item)
     print(f'last send to timluli AFTER:{last_sent_to_timluli}')
 
+
 def forward_to_timluli():
     global timluli_queue
     global last_sent_to_timluli
     while timluli_is_locked():
-        time.sleep(10) # wait 10 seconds until next check
+        time.sleep(10)  # wait 10 seconds until next check
         print("in forward_to_timluli: last_sent_to_timluli is not None")
     last_sent_to_timluli = timluli_queue.get()
     print(f"forwarding to timluli: {last_sent_to_timluli}")
     forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
 
+
 def pop_timluli():
     global timluli_queue
     while True:
         if timluli_queue.empty():
-            print ("timluli_queue is empty. will check again in 10 mins")
-            time.sleep(5*60) # wait 5 mins
+            print("timluli_queue is empty. will check again in 10 mins")
+            time.sleep(5 * 60)  # wait 5 mins
         else:
             forward_to_timluli()
 
@@ -652,7 +681,7 @@ def handle_timluli(json_data):
     curr_timlul = last_sent_to_timluli
     last_sent_to_timluli = None
     if TO_USE_GPT:
-        raw_msg = json_data['message']["text"] # raw_msg.split('\n\n')[1] is the timlul, raw_msg...[0] is the headline
+        raw_msg = json_data['message']["text"]  # raw_msg.split('\n\n')[1] is the timlul, raw_msg...[0] is the headline
         ret_json = is_task(message=raw_msg.split('\n\n')[1])
         answer = ret_json["is_task"]
         print(f"Accroding to ChatGPT, this message is {answer} task: {json_data['message']['text']}")
@@ -804,6 +833,7 @@ if __name__ == '__main__':
     #app.run()
     #start_QnA()
     from waitress import serve
+
     TO_USE_GPT = True
     IS_QA = False
 
