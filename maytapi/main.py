@@ -7,8 +7,9 @@ import sys
 import json
 import os
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import threading
+import pytz
 
 sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import queue
@@ -98,9 +99,6 @@ def is_task(message):
 
 
 # -------------------------------------------------- QNA SUPPORTERS --------------------------------------------------#
-
-def utc_plus_3():
-    return datetime.now() + timedelta(hours=3)
 
 
 def pop_question(emp_phone, status):
@@ -244,8 +242,8 @@ def create_group(name, numbers):
 
 def send_msg(body):
     print(f"Request Body {body}")
-    breakpoint=1
-    if breakpoint ==1:
+    breakpoint = 0
+    if breakpoint == 1:
         return
     execute_post(body=body, url_suffix='sendMessage')
     write_log(json_data=body, outcome=True)
@@ -285,7 +283,8 @@ def write_log(json_data, outcome=False, income=False):
                         f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
                     log.write(f"\tMessage: {json_data['message']['text']}\n")
                 elif outcome:
-                    log.write(f"{utc_plus_3().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
+                    log.write(
+                        f"{datetime.now(pytz.timezone('Asia/Jerusalem')).strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
                     log.write(f"\t Message: {json_data['message']}\n")
                 else:
                     log.write(
@@ -299,15 +298,29 @@ def create_log_file():
     print("Log file doesn't exist. Creating a new one...")
     with open('log.txt', 'w') as new_log:
         new_log.write(
-            f"-------------------------     CREATION TIME (UTC): {datetime.now().strftime(Tstamp_format)}     -------------------------\n")
+            f"-------------------------     CREATION TIME (UTC): {datetime.now(pytz.timezone('Asia/Jerusalem')).strftime(Tstamp_format)}     -------------------------\n")
 
 
 def trigeer_QnA():
+    days = {
+        "Monday": 0,
+        "Tuesday": 1,
+        "Wednesday": 2,
+        "Thursday": 3,
+        "Friday": 4,
+        "Saturday": 5,
+        "Sunday": 6
+    }
     while True:
-        current_hour = (time.localtime().tm_hour) + 3  # UTC Time + 3 = israel Summer clock
+        now = datetime.now(pytz.timezone('Asia/Jerusalem'))
+        current_hour = now.hour
         if current_hour == 17:  # desired hour to trigger function (will be checked once at 19:00-19:59
-            start_QnA()
-            print("It's 17:00 ")
+            today = now.weekday()
+            if today is days["Friday"] or today is days["Saturday"]:
+                pass
+            else:
+                start_QnA()
+                print("It's 17:00 ")
             time.sleep(15 * 60 * 60)  # Sleep for 15 hours
         else:
             print(f"It's not 20:00. Waiting for 55 minutes. Current time: {current_hour}")
@@ -344,7 +357,7 @@ def check_log_file():
         if os.path.exists(log_file):
 
             creation_time = datetime.fromtimestamp(os.path.getctime(log_file))
-            current_date = datetime.now().date()
+            current_date = datetime.now(pytz.timezone('Asia/Jerusalem')).date()
 
             # Check if a week has passed since creation
             print(f"Log file exists since {creation_time.date()}. timedelta: {current_date - creation_time.date()}")
@@ -363,8 +376,8 @@ def check_log_file():
 
 
 def execute_post(body, url_suffix):
-    breakpoint=1
-    if breakpoint ==1:
+    breakpoint = 0
+    if breakpoint == 1:
         return
     try:
         response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
@@ -529,7 +542,7 @@ def send_private_txt_msg(msg, to):
                 "message": msg,
                 "to_number": t
             }
-            breakpoint=1
+            breakpoint = 0
             if breakpoint == 1:
                 return
             send_msg(body=body)
@@ -668,7 +681,8 @@ def send_next_QnA(raw_emp_phone):
     if question == None:
         return
     hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
-    send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}", [raw_emp_phone])
+    send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}\n * האם טופל ונסגר? יש לענות רק בכן או לא *",
+                         [raw_emp_phone])
     # send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
 
 
@@ -724,7 +738,7 @@ def send_admin_menu(raw_phone_number):
 def webhook():
     json_data = request.get_json()
     write_log(json_data=json_data, income=True)
-    json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
+    json_data['timestamp'] = datetime.now(pytz.timezone('Asia/Jerusalem')).strftime(Tstamp_format)
     # region QA:
     global Qpoll
     Qpoll = hdb.get_QnA_dict()
@@ -784,7 +798,6 @@ def webhook():
 if __name__ == '__main__':
     #app.run()
     from waitress import serve
-
 
     TO_USE_GPT = True
     IS_QA = True
