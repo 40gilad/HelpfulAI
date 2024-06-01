@@ -9,6 +9,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import threading
+
 sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import queue
 import DBmain as Database
@@ -137,17 +138,22 @@ def get_next_question(raw_emp_phone):
     is_emp_in_poll = False
     emp_phone = emp_phone.split('@')[0]
     for d in Qpoll:
-        if d['emp'] == emp_phone and d['questions'] != []:
+        if d['emp'] == emp_phone:
+            raw_customer_phone = d['customer']
+        else:
+            continue
+        if d['questions'] != []:
             is_emp_in_poll = True
             return {
                 'Q': d['questions'][0][1],
                 'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
                 'id': d['questions'][0][0]
             }
-        # for d in Qpoll:
-        #     print(f"{d['emp']}-{d['customer']}")
-        if not is_emp_in_poll:
-            finish_QnA(emp_phone=raw_emp_phone, customer_phone=format_phone_for_sending(d['customer']))
+        else:
+            break
+    if not is_emp_in_poll:
+        finish_QnA(emp_phone=raw_emp_phone,
+                   customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
 
 
 def finish_QnA(emp_phone, customer_phone):
@@ -195,22 +201,24 @@ def send_to_timluli(json_data):
             print(item)
     print(f'last send to timluli AFTER:{last_sent_to_timluli}')
 
+
 def forward_to_timluli():
     global timluli_queue
     global last_sent_to_timluli
     while timluli_is_locked():
-        time.sleep(10) # wait 10 seconds until next check
+        time.sleep(10)  # wait 10 seconds until next check
         print("in forward_to_timluli: last_sent_to_timluli is not None")
     last_sent_to_timluli = timluli_queue.get()
     print(f"forwarding to timluli: {last_sent_to_timluli}")
     forward_msg(msg=last_sent_to_timluli['msg_id'], to=timluli)
 
+
 def pop_timluli():
     global timluli_queue
     while True:
         if timluli_queue.empty():
-            print ("timluli_queue is empty. will check again in 10 mins")
-            time.sleep(2*60) # wait 10 mins
+            print("timluli_queue is empty. will check again in 10 mins")
+            time.sleep(5 * 60)  # wait 5 mins
         else:
             forward_to_timluli()
 
@@ -236,6 +244,9 @@ def create_group(name, numbers):
 
 def send_msg(body):
     print(f"Request Body {body}")
+    breakpoint=1
+    if breakpoint ==1:
+        return
     execute_post(body=body, url_suffix='sendMessage')
     write_log(json_data=body, outcome=True)
 
@@ -352,6 +363,9 @@ def check_log_file():
 
 
 def execute_post(body, url_suffix):
+    breakpoint=1
+    if breakpoint ==1:
+        return
     try:
         response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
         response.raise_for_status()  # Raise an error for bad responses
@@ -515,6 +529,9 @@ def send_private_txt_msg(msg, to):
                 "message": msg,
                 "to_number": t
             }
+            breakpoint=1
+            if breakpoint == 1:
+                return
             send_msg(body=body)
 
 
@@ -565,8 +582,8 @@ def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id
                     emp_phone=format_phone_for_selection(
                         raw_phone_number=raw_phone_number
                     ))
-                send_daily_report(raw_emp_phone=raw_phone_number,
-                                  raw_customer_phone=raw_customer_phone, is_approved=True)
+                # send_daily_report(raw_emp_phone=raw_phone_number,
+                #                   raw_customer_phone=raw_customer_phone, is_approved=True)
             elif income_msg == "לא":
                 send_private_txt_msg(msg="אוקיי. יש לתקן את הדוח ולשלוח אותו לראש הצוות וללקוח ", to=raw_phone_number)
 
@@ -614,7 +631,7 @@ def handle_timluli(json_data):
     curr_timlul = last_sent_to_timluli
     last_sent_to_timluli = None
     if TO_USE_GPT:
-        raw_msg = json_data['message']["text"] # raw_msg.split('\n\n')[1] is the timlul, raw_msg...[0] is the headline
+        raw_msg = json_data['message']["text"]  # raw_msg.split('\n\n')[1] is the timlul, raw_msg...[0] is the headline
         ret_json = is_task(message=raw_msg.split('\n\n')[1])
         answer = ret_json["is_task"]
         print(f"Accroding to ChatGPT, this message is {answer} task: {json_data['message']['text']}")
@@ -709,6 +726,8 @@ def webhook():
     write_log(json_data=json_data, income=True)
     json_data['timestamp'] = datetime.now().strftime(Tstamp_format)
     # region QA:
+    global Qpoll
+    Qpoll = hdb.get_QnA_dict()
     if IS_QA:
         if 'user' not in json_data:
             return jsonify({"ack": "Received an ack message"}), 200
@@ -765,8 +784,10 @@ def webhook():
 if __name__ == '__main__':
     #app.run()
     from waitress import serve
+
+
     TO_USE_GPT = True
-    IS_QA = False
+    IS_QA = True
 
     #check if its time for day conclusion
     hour_check_thread = threading.Thread(target=trigeer_QnA)
@@ -779,4 +800,6 @@ if __name__ == '__main__':
     #handle timluli queue
     timluli_queue_thread = threading.Thread(target=pop_timluli)
     timluli_queue_thread.start()
+
+    #start_QnA()
     serve(app)
