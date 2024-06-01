@@ -48,7 +48,25 @@ class Globals(SingletonBase):
         if not hasattr(self, '_initialized'):
             self._initialized = True
 
+    def write_log(self,json_data, outcome=False, income=False):
+        try:
+            with open('log.txt', 'a') as log:
+                if json_data["type"] == 'text' or json_data["type"] == 'message' or json_data["type"] == 'reaction':
+                    if income and 'text' in json_data['message']:
+                        log.write(
+                            '##################################################################################################\n')
+                        log.write(
+                            f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
+                        log.write(f"\tMessage: {json_data['message']['text']}\n")
+                    elif outcome:
+                        log.write(f"{utc_plus_3().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
+                        log.write(f"\t Message: {json_data['message']}\n")
+                    else:
+                        log.write(
+                            f"\n--------------------------------------------------------------------------------------\n JSON DATA \n\t{json_data}\n --------------------------------------------------------------------------------------\n\n\n")
 
+        except():
+            log.write(json_data)
 class DatabaseHelper(SingletonBase):
     DB_ENV_PATH = r'/home/ubuntu/HelpfulAI/Database/PythonDatabase/DBhelpful.env'  # DB
 
@@ -56,6 +74,8 @@ class DatabaseHelper(SingletonBase):
         if not hasattr(self, '_initialized'):
             self._initialized = True
             self.hdb = Database.Database(env_path=self.DB_ENV_PATH)
+    def format_phone_for_selection(self,raw_phone_number):
+        return self.hdb.format_phone_for_selection(raw_phone_number)
 
 
 class GepetoHelper(SingletonBase):
@@ -112,49 +132,6 @@ class GepetoHelper(SingletonBase):
             return json
 
 
-class MaytapiHelper(SingletonBase):
-    PRODUCT_ID = os.getenv("PRODUCT_ID")  # maytapi
-    PHONE_ID = os.getenv("PHONE_ID")  # maytapi
-    API_TOKEN = os.getenv("TOKEN")  # maytapi
-    INSTANCE_URL = os.getenv('INSTANCE_URL')
-    CREATE_GROUP_SUFFIX = 'createGroup'
-
-    def __init__(self):
-        if not hasattr(self, '_initialized'):
-            self._initialized = True
-            self.url = f"{self.INSTANCE_URL}/{self.PRODUCT_ID}/{self.PHONE_ID}"
-            self.headers = {"Content-Type": "application/json", "x-maytapi-key": self.API_TOKEN}
-
-
-class SessionManager(SingletonBase):
-    SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
-
-    def __init__(self):
-        if not hasattr(self, '_initialized'):
-            self._initialized = True
-
-    def get_dict_val(self, key):
-        # returns value of the key from session dict
-        return self.SESSION_DICT[key]
-
-
-class TimluliHelper(SingletonBase):
-    def __init__(self):
-        if not hasattr(self, '_initialized'):
-            self._initialized = True
-            self.timluli_queue = queue.Queue(maxsize=Globals().TIMLULI_Q_SIZE)
-            self.last_sent_to_timluli = None
-
-
-class ConversationHelper(SingletonBase):
-    def __init__(self):
-        if not hasattr(self, '_initialized'):
-            self._initialized = True
-            self.ROBOT_SIGN = ['🤖', '🦿', '🦾']  # conversation
-            self.private_chat_type = 'c'  # conversation
-            self.group_chat_type = 'g'  # conversation
-
-
 class DaySummeryHelper(SingletonBase):
     Qpoll= None
     def __init__(self):
@@ -167,7 +144,8 @@ class DaySummeryHelper(SingletonBase):
         """
         take question outside Qpoll and insert answer to database
         """
-        emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
+
+        emp_phone = self.db.format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
         if self.Qpoll is not None:
             for d in self.Qpoll:
                 if d['emp'] == emp_phone:
@@ -225,6 +203,173 @@ class DaySummeryHelper(SingletonBase):
         send_private_txt_msg(msg="תודה! הנה סיכום היום שלך:", to=[emp_phone])
         # hdb.update_stage(system_id=hdb.get_system_id(phone_number=format_phone_for_selection(emp_phone)),stage=SESSION_DICT['SendMenu'])
         send_daily_report(raw_emp_phone=emp_phone, raw_customer_phone=customer_phone)
+    def is_ready_for_QnA(self,emp_phone):
+        send_private_txt_msg(f" היי *{hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}* \n"
+                             f" זה הבוט של הלפפול :) \n"
+                             f" מוכנה לסיכום היום שלנו? "
+                             f"אני אכתוב לך מה ביקשו ממך במהלך היום ואת תגידי לי אם ביצעת את זה או לא"
+                             f"(יש לענות רק בכן או לא)", to=[emp_phone])
+
+
+    def send_next_QnA(self,raw_emp_phone):
+        question = get_next_question(raw_emp_phone=raw_emp_phone)
+        if question == None:
+            return
+        hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
+        send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}", [raw_emp_phone])
+        # send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
+
+
+    def send_daily_report(self,raw_emp_phone, raw_customer_phone, is_approved=False):
+        print(f"starting daily to number {raw_emp_phone}.is approved= {is_approved}")
+        formatted_customer_phone = format_phone_for_selection(raw_phone_number=raw_customer_phone)
+        formatted_emp_phone = format_phone_for_selection(raw_phone_number=raw_emp_phone)
+        for status in range(1, -1, -1):
+            msgs = hdb.get_daily(customer_phone=formatted_customer_phone, status=status)
+            if status == 0:
+                txt = f"*זה ישאר למחר:*\n"
+            elif status == 1:
+                if is_approved:
+                    txt = f" * סיכום היום של {hdb.get_employee_name(phone_number=formatted_emp_phone)} * \n"
+                    txt = txt + f"עבור העסק {hdb.get_buisness_name(phone_number=formatted_customer_phone)} ביצענו היום : \n"
+                elif not is_approved:
+                    txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
+                    txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
+            counter = 1
+            for m in msgs:
+                txt = txt + f"\n{counter}. {m[1]}"
+                counter = counter + 1
+            if not is_approved:
+                send_private_txt_msg(msg=txt, to=[raw_emp_phone])
+        if not is_approved:
+            hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
+                             stage=SESSION_DICT['ApproveQnA'])
+            hdb.insert_waiting_for_approve(emp_number=formatted_emp_phone, customer_number=formatted_customer_phone)
+            send_private_txt_msg(msg="האם את מאשרת את סיכום היום?", to=[raw_emp_phone])
+        elif is_approved:
+            hdb.delete_daily(customer_phone=formatted_customer_phone)
+class MaytapiHelper(SingletonBase):
+    PRODUCT_ID = os.getenv("PRODUCT_ID")  # maytapi
+    PHONE_ID = os.getenv("PHONE_ID")  # maytapi
+    API_TOKEN = os.getenv("TOKEN")  # maytapi
+    INSTANCE_URL = os.getenv('INSTANCE_URL')
+    CREATE_GROUP_SUFFIX = 'createGroup'
+
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.url = f"{self.INSTANCE_URL}/{self.PRODUCT_ID}/{self.PHONE_ID}"
+            self.headers = {"Content-Type": "application/json", "x-maytapi-key": self.API_TOKEN}
+
+    def execute_post(self,body, url_suffix):
+        try:
+            Globals
+            response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
+            response.raise_for_status()  # Raise an error for bad responses
+            print(f"{response} \n\t{response.json()}")
+            if url_suffix is CREATE_GROUP_SUFFIX:
+                if response.json()['success'] == True:
+                    return response.json()['data']['id']
+                else:
+                    return response.json()
+        except requests.exceptions.HTTPError as errh:
+            print("HTTP Error:", errh)
+        except requests.exceptions.ConnectionError as errc:
+            print("Error Connecting:", errc)
+        except requests.exceptions.Timeout as errt:
+            print("Timeout Error:", errt)
+        except requests.exceptions.RequestException as err:
+            print("Oops! Something went wrong:", err)
+
+class SessionManager(SingletonBase):
+    SESSION_DICT = json.loads(os.getenv("SESSION_DICT"))
+
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+
+    def get_dict_val(self, key):
+        # returns value of the key from session dict
+        return self.SESSION_DICT[key]
+
+
+class TimluliHelper(SingletonBase):
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.timluli_queue = queue.Queue(maxsize=Globals().TIMLULI_Q_SIZE)
+            self.last_sent_to_timluli = None
+
+
+class ConversationHelper(SingletonBase):
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            self._initialized = True
+            self.ROBOT_SIGN = ['🤖', '🦿', '🦾']  # conversation
+            self.private_chat_type = 'c'  # conversation
+            self.group_chat_type = 'g'  # conversation
+    def send_msg(self,body):
+        print(f"Request Body {body}")
+        MaytapiHelper().execute_post(body=body, url_suffix='sendMessage')
+        Globals().write_log(json_data=body, outcome=True)
+
+    def react_robot(self,group_id, msg_id):
+        body = {
+            "to_number": group_id,
+            "type": "reaction",
+            "message": self.ROBOT_SIGN[random.randint(0, len(self.ROBOT_SIGN) - 1)],
+            "reply_to": msg_id
+        }
+        self.send_msg(body)
+
+    def format_phone_for_sending(self,phone_number):
+        if phone_number.startswith('0'):
+            phone_number = phone_number[1:]
+            phone_number = '972' + phone_number
+            return phone_number
+    def send_private_txt_msg(self,msg, to):
+        if to != []:
+            for t in to:
+                self.format_phone_for_sending(t)
+                body = {
+                    "type": "text",
+                    "message": msg,
+                    "to_number": t
+                }
+                self.send_msg(body=body)
+    def run_conversation(self,ses_stage, permission, raw_phone_number, income_msg, sys_id):
+        # ---------- triggering QnA from admins phone --------------#
+        if sys_id == 1 or sys_id == 2:  #talking to gilad
+            if income_msg.lower() == "qna":
+                DaySummeryHelper().start_QnA()
+                return
+            elif income_msg.lower() == 'ping':
+                self.send_private_txt_msg(msg='pong', to=[raw_phone_number])
+                return
+        # -----------------------------------------------------------#
+        if ses_stage >= SessionManager.get_dict_val(key="IsReadyForQnA"):
+            if income_msg != 'כן' and income_msg != 'לא':
+                self.send_private_txt_msg(msg='בבקשה לענות רק בכן או לא', to=[raw_phone_number])
+                return
+            elif ses_stage == SessionManager.get_dict_val(key='ApproveQnA'):
+                if income_msg == "כן":
+                    self.send_private_txt_msg(msg="תודה! אל תשכחי להעביר את הסיכום ללקוח :)",
+                                         to=[raw_phone_number])
+                elif income_msg == "לא":
+                    self.send_private_txt_msg(msg="אוקיי. יש לתקן את הדוח ולשלוח אותו לראש הצוות וללקוח ", to=raw_phone_number)
+
+                DatabaseHelper().hdb.update_stage(raw_phone_number=raw_phone_number,
+                                 stage=SessionManager().get_dict_val(key='SendMenu'))
+                return
+            elif ses_stage == SessionManager().get_dict_val('QnA'):
+                status = 0
+                if income_msg == 'כן':
+                    status = 1
+                DaySummeryHelper.pop_question(emp_phone=raw_phone_number, status=status)
+            elif ses_stage == SessionManager().get_dict_val('IsReadyForQnA'):
+                if income_msg == 'כן':
+                    DatabaseHelper().hdb.update_stage(system_id=sys_id, stage=SessionManager().get_dict_val('QnA'])
+            self.send_next_QnA(raw_emp_phone=raw_phone_number)
 
 
 # endregion
@@ -321,20 +466,6 @@ def create_group(name, numbers):
     execute_post(body=body, url_suffix=CREATE_GROUP_SUFFIX)
 
 
-def send_msg(body):
-    print(f"Request Body {body}")
-    execute_post(body=body, url_suffix='sendMessage')
-    write_log(json_data=body, outcome=True)
-
-
-def react_robot(group_id, msg_id):
-    body = {
-        "to_number": group_id,
-        "type": "reaction",
-        "message": ROBOT_SIGN[random.randint(0, len(ROBOT_SIGN) - 1)],
-        "reply_to": msg_id
-    }
-    send_msg(body)
 
 
 def forward_msg(msg, to):
@@ -349,26 +480,6 @@ def forward_msg(msg, to):
 
 # --------------------------------------------------------------------------------------------------------------------#
 # ----------------------------------------------------- GENERALS -----------------------------------------------------#
-
-def write_log(json_data, outcome=False, income=False):
-    try:
-        with open('log.txt', 'a') as log:
-            if json_data["type"] == 'text' or json_data["type"] == 'message' or json_data["type"] == 'reaction':
-                if income and 'text' in json_data['message']:
-                    log.write(
-                        '##################################################################################################\n')
-                    log.write(
-                        f"{json_data['timestamp']}:\t{json_data['user']['phone']}({json_data['user']['name']}) - in {json_data['conversation']}:\n")
-                    log.write(f"\tMessage: {json_data['message']['text']}\n")
-                elif outcome:
-                    log.write(f"{utc_plus_3().strftime(Tstamp_format)}:\tresponse to {json_data['to_number']}:\n")
-                    log.write(f"\t Message: {json_data['message']}\n")
-                else:
-                    log.write(
-                        f"\n--------------------------------------------------------------------------------------\n JSON DATA \n\t{json_data}\n --------------------------------------------------------------------------------------\n\n\n")
-
-    except():
-        log.write(json_data)
 
 
 def create_log_file():
@@ -438,31 +549,7 @@ def check_log_file():
         time.sleep(24 * 60 * 60)
 
 
-def execute_post(body, url_suffix):
-    try:
-        response = requests.post(f'{url}/{url_suffix}', json=body, headers=headers)
-        response.raise_for_status()  # Raise an error for bad responses
-        print(f"{response} \n\t{response.json()}")
-        if url_suffix is CREATE_GROUP_SUFFIX:
-            if response.json()['success'] == True:
-                return response.json()['data']['id']
-            else:
-                return response.json()
-    except requests.exceptions.HTTPError as errh:
-        print("HTTP Error:", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting:", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error:", errt)
-    except requests.exceptions.RequestException as err:
-        print("Oops! Something went wrong:", err)
 
-
-def format_phone_for_sending(phone_number):
-    if phone_number.startswith('0'):
-        phone_number = phone_number[1:]
-        phone_number = '972' + phone_number
-        return phone_number
 
 
 def is_angel(raw_phone_number, group_id=None):
@@ -572,17 +659,6 @@ def handle_group_msg_gpt(json_data):
 
 # region Private chat handles
 
-def send_private_txt_msg(msg, to):
-    if to != []:
-        for t in to:
-            format_phone_for_sending(t)
-            body = {
-                "type": "text",
-                "message": msg,
-                "to_number": t
-            }
-            send_msg(body=body)
-
 
 def send_msg_to_gilad(msg):
     send_private_txt_msg(msg=msg, to=['972526263862'])
@@ -607,47 +683,6 @@ def handle_income_private_msg(json_data):
                      income_msg=json_data['message']['text'], sys_id=sys_id)
 
 
-def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
-    # ---------- triggering QnA from admins phone --------------#
-    if sys_id == 1 or sys_id == 2:  #talking to gilad
-        if income_msg.lower() == "qna":
-            start_QnA()
-            return
-        elif income_msg.lower() == 'ping':
-            send_private_txt_msg(msg='pong', to=[raw_phone_number])
-            return
-    # -----------------------------------------------------------#
-    # income_msg = income_msg.lower()
-    if ses_stage >= SESSION_DICT['IsReadyForQnA']:
-        if income_msg != 'כן' and income_msg != 'לא':
-            send_private_txt_msg(msg='בבקשה לענות רק בכן או לא', to=[raw_phone_number])
-            return
-        elif ses_stage == SESSION_DICT['ApproveQnA']:
-            if income_msg == "כן":
-                send_private_txt_msg(msg="תודה! אל תשכחי להעביר את הסיכום ללקוח :)",
-                                     to=[raw_phone_number])
-                raw_customer_phone = hdb.get_customer_waiting_for_approve(
-                    emp_phone=format_phone_for_selection(
-                        raw_phone_number=raw_phone_number
-                    ))
-                # send_daily_report(raw_emp_phone=raw_phone_number,
-                #                   raw_customer_phone=raw_customer_phone, is_approved=True)
-            elif income_msg == "לא":
-                send_private_txt_msg(msg="אוקיי. יש לתקן את הדוח ולשלוח אותו לראש הצוות וללקוח ", to=raw_phone_number)
-
-            hdb.delete_waiting_for_approve(customer_phone=raw_customer_phone)
-            hdb.update_stage(hdb.get_system_id(format_phone_for_selection(raw_phone_number=raw_phone_number)),
-                             stage=SESSION_DICT['SendMenu'])
-            return
-        elif ses_stage == SESSION_DICT['QnA']:
-            status = 0
-            if income_msg == 'כן':
-                status = 1
-            pop_question(emp_phone=raw_phone_number, status=status)
-        elif ses_stage == SESSION_DICT['IsReadyForQnA']:
-            if income_msg == 'כן':
-                hdb.update_stage(system_id=sys_id, stage=SESSION_DICT['QnA'])
-        send_next_QnA(raw_emp_phone=raw_phone_number)
 
 
 def handle_admin(ses_stage, raw_phone_number):
@@ -692,59 +727,6 @@ def handle_timluli(json_data):
                                msg=raw_msg.split('\n\n')[1],
                                time_stamp=json_data["timestamp"])
 
-
-def is_ready_for_QnA(emp_phone):
-    send_private_txt_msg(f" היי *{hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}* \n"
-                         f" זה הבוט של הלפפול :) \n"
-                         f" מוכנה לסיכום היום שלנו? "
-                         f"אני אכתוב לך מה ביקשו ממך במהלך היום ואת תגידי לי אם ביצעת את זה או לא"
-                         f"(יש לענות רק בכן או לא)", to=[emp_phone])
-
-
-def send_next_QnA(raw_emp_phone):
-    question = get_next_question(raw_emp_phone=raw_emp_phone)
-    if question == None:
-        return
-    hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
-    send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}", [raw_emp_phone])
-    # send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
-
-
-def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
-    print(f"starting daily to number {raw_emp_phone}.is approved= {is_approved}")
-    formatted_customer_phone = format_phone_for_selection(raw_phone_number=raw_customer_phone)
-    formatted_emp_phone = format_phone_for_selection(raw_phone_number=raw_emp_phone)
-    for status in range(1, -1, -1):
-        msgs = hdb.get_daily(customer_phone=formatted_customer_phone, status=status)
-        if status == 0:
-            txt = f"*זה ישאר למחר:*\n"
-        elif status == 1:
-            if is_approved:
-                txt = f" * סיכום היום של {hdb.get_employee_name(phone_number=formatted_emp_phone)} * \n"
-                txt = txt + f"עבור העסק {hdb.get_buisness_name(phone_number=formatted_customer_phone)} ביצענו היום : \n"
-            elif not is_approved:
-                txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
-                txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
-        counter = 1
-        for m in msgs:
-            txt = txt + f"\n{counter}. {m[1]}"
-            counter = counter + 1
-        if not is_approved:
-            send_private_txt_msg(msg=txt, to=[raw_emp_phone])
-        # elif is_approved:
-        #     send_private_txt_msg(msg=txt, to=[
-        #         format_phone_for_sending(phone_number=hdb.get_employee_phone(
-        #             system_id=hdb.get_team_leader_id(
-        #                 customer_id=hdb.get_system_id(
-        #                     phone_number=formatted_customer_phone
-        #                 ))))])
-    if not is_approved:
-        hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
-                         stage=SESSION_DICT['ApproveQnA'])
-        hdb.insert_waiting_for_approve(emp_number=formatted_emp_phone, customer_number=formatted_customer_phone)
-        send_private_txt_msg(msg="האם את מאשרת את סיכום היום?", to=[raw_emp_phone])
-    elif is_approved:
-        hdb.delete_daily(customer_phone=formatted_customer_phone)
 
 
 # endregion
