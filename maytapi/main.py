@@ -688,7 +688,7 @@ def send_QnA_poll(question,raw_emp_phone):
             "to_number": raw_emp_phone,
             "type": "poll",
             "message": "סמן את מה ש *לא* עשית",
-            "options": ['1','2','3'],
+            "options": options[0:10],
             "only_one": False
 
     }
@@ -715,13 +715,6 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
             counter = counter + 1
         if not is_approved:
             send_private_txt_msg(msg=txt, to=[raw_emp_phone])
-        # elif is_approved:
-        #     send_private_txt_msg(msg=txt, to=[
-        #         format_phone_for_sending(phone_number=hdb.get_employee_phone(
-        #             system_id=hdb.get_team_leader_id(
-        #                 customer_id=hdb.get_system_id(
-        #                     phone_number=formatted_customer_phone
-        #                 ))))])
     if not is_approved:
         hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
                          stage=SESSION_DICT['ApproveQnA'])
@@ -823,17 +816,5 @@ if __name__ == '__main__':
     # timluli_queue_thread.start()
     # start_QnA()
     Qpoll = hdb.get_QnA_dict()
-    #send_next_QnA("972526263862@c.us")
-    send_msg_to_gilad("kakakaa")
-    body={
-
-            "to_number": "972526263862@c.us",
-            "type": "poll",
-            "message": "סמן את מה ש *לא* עשית",
-            "options": ['1','2','3'],
-            "only_one": False
-
-    }
-    send_msg(body)
-
+    send_next_QnA("972526263862@c.us")
     serve(app)
