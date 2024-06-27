@@ -134,19 +134,15 @@ def get_next_question(raw_emp_phone):
     global Qpoll
     emp_phone = format_phone_for_selection(raw_emp_phone)
     is_emp_in_poll = False
-    emp_phone = emp_phone.split('@')[0]
     for d in Qpoll:
         if d['emp'] == emp_phone:
             raw_customer_phone = d['customer']
         else:
             continue
         if d['questions'] != []:
+            # HERE! D['QUESTIONS'] IS ALL THE QUESTIONS IN TUPLES.
             is_emp_in_poll = True
-            return {
-                'Q': d['questions'][0][1],
-                'BN': hdb.get_buisness_name(phone_number=format_phone_for_selection(d['customer'])),
-                'id': d['questions'][0][0]
-            }
+            return d['questions']
         else:
             break
     if not is_emp_in_poll:
@@ -680,11 +676,23 @@ def send_next_QnA(raw_emp_phone):
     question = get_next_question(raw_emp_phone=raw_emp_phone)
     if question == None:
         return
-    hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
-    send_private_txt_msg(f"{question['BN']} ביקש ממך:\n {question['Q']}\n * האם טופל ונסגר? יש לענות רק בכן או לא *",
-                         [raw_emp_phone])
-    # send_private_txt_msg(f"{question['BN']} asked you:\n {question['Q']}", raw_emp_phone)
+    #hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
+    send_QnA_poll(question,raw_emp_phone)
 
+
+
+def send_QnA_poll(question,raw_emp_phone):
+    options = [q for _,q in question]
+    body={
+
+            "to_number": raw_emp_phone,
+            "type": "poll",
+            "message": "סמן את מה ש *לא* עשית",
+            "options": ['1','2','3'],
+            "only_one": False
+
+    }
+    send_msg(body)
 
 def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
     print(f"starting daily to number {raw_emp_phone}.is approved= {is_approved}")
@@ -803,16 +811,29 @@ if __name__ == '__main__':
     IS_QA = True
 
     #check if its time for day conclusion
-    hour_check_thread = threading.Thread(target=trigeer_QnA)
-    hour_check_thread.start()
+    # hour_check_thread = threading.Thread(target=trigeer_QnA)
+    # hour_check_thread.start()
 
     #check if db is connected
-    db_connection_thread = threading.Thread(target=check_db_connection)
-    db_connection_thread.start()
+    # db_connection_thread = threading.Thread(target=check_db_connection)
+    # db_connection_thread.start()
 
     #handle timluli queue
-    timluli_queue_thread = threading.Thread(target=pop_timluli)
-    timluli_queue_thread.start()
+    # timluli_queue_thread = threading.Thread(target=pop_timluli)
+    # timluli_queue_thread.start()
+    # start_QnA()
+    Qpoll = hdb.get_QnA_dict()
+    #send_next_QnA("972526263862@c.us")
+    send_msg_to_gilad("kakakaa")
+    body={
 
-    #start_QnA()
+            "to_number": "972526263862@c.us",
+            "type": "poll",
+            "message": "סמן את מה ש *לא* עשית",
+            "options": ['1','2','3'],
+            "only_one": False
+
+    }
+    send_msg(body)
+
     serve(app)
