@@ -47,6 +47,7 @@ TO_USE_GPT = False
 IS_QA = False
 GPT3 = "gpt-3.5-turbo"
 GPT4 = "gpt-4-0125-preview"
+POLL_SIZE = 9
 
 
 # endregion
@@ -130,7 +131,10 @@ def insert_answer(msg_id, status):
         hdb.update_msg_status(msg_id=msg_id)
 
 
-def get_next_question(raw_emp_phone):
+def get_next_question(raw_emp_phone,limit=POLL_SIZE):
+    """
+    limit: pass -1 if you wish to get all questions.
+    """
     global Qpoll
     emp_phone = format_phone_for_selection(raw_emp_phone)
     is_emp_in_poll = False
@@ -142,7 +146,10 @@ def get_next_question(raw_emp_phone):
         if d['questions'] != []:
             # HERE! D['QUESTIONS'] IS ALL THE QUESTIONS IN TUPLES.
             is_emp_in_poll = True
-            return d['questions']
+            if limit != -1:
+                return d['questions'][:limit]
+            else:
+                return d['questions']
         else:
             break
     if not is_emp_in_poll:
@@ -633,7 +640,12 @@ def handle_team_maneger(ses_stage, raw_phone_number):
 def handle_employee(ses_stage, raw_phone_number):
     pass
 
-
+def handle_poll_answers(answers,raw_phone_number):
+    if answers[POLL_SIZE]['votes'] > 0:
+        pass
+    # finish answereing poll. send next one or finish day sum
+    else:
+        return
 def handle_timluli(json_data):
     global last_sent_to_timluli
     global TO_USE_GPT
@@ -684,12 +696,13 @@ def send_next_QnA(raw_emp_phone):
 
 def send_QnA_poll(question,raw_emp_phone):
     options = [q for _,q in question]
+    options.append('סיימתי')
     body={
 
             "to_number": raw_emp_phone,
             "type": "poll",
             "message": "סמן את מה ש *לא* עשית",
-            "options": options[0:10],
+            "options": options,
             "only_one": False
 
     }
@@ -745,34 +758,34 @@ def webhook():
     global Qpoll
     Qpoll = hdb.get_QnA_dict()
     if IS_QA:
-        if 'user' not in json_data:
-            return jsonify({"ack": "Received an ack message"}), 200
-        if '972526263862@c.us' == json_data["user"]["id"] or '972537750144@c.us' == json_data["user"]["id"]:
-            if json_data['type'] == 'error':
-                return jsonify({"error": "Received an error message"}), 400
+        try:
+            if '972526263862@c.us' == json_data["user"]["id"] or '972537750144@c.us' == json_data["user"]["id"]:
+                if json_data['type'] == 'error':
+                    return jsonify({"error": "Received an error message"}), 400
+        except(KeyError):
+            pass
 
-            elif json_data['type'] == 'ack':  # returned acknowledgement from the receiver
-                if 'options' in json_data['data']:
-                    # answered a poll
-                    pass
-                else:
-                    print(f"Message {json_data['data'][0]['msgId']} was acked")
-
-            elif ('conversation' in json_data and json_data['conversation']
-                  == '972537750144@c.us'):  # returned voice to txt from timluli
-                handle_timluli(json_data=json_data)
-
-            elif json_data['type'] != 'ack':  # not ack and not timluli
-                conv_type = json_data["conversation"].split('@')[1][0]
-                if conv_type == group_chat_type:
-                    handle_group_msg_gpt(json_data=json_data)
-                elif conv_type == private_chat_type:
-                    handle_income_private_msg(json_data=json_data)
+        if json_data['type'] == 'ack':  # returned acknowledgement from the receiver
+            if 'options' in json_data['data'][0]:
+                # answered a poll
+                handle_poll_answers(json_data['data'][0]['options'],json_data['data'][0]['chatId'])
             else:
-                return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
-            return jsonify({"success": True}), 200
+                print(f"Message {json_data['data'][0]['msgId']} was acked")
+                return jsonify({"ack": "Received an ack message"}), 200
+
+        elif ('conversation' in json_data and json_data['conversation']
+              == '972537750144@c.us'):  # returned voice to txt from timluli
+            handle_timluli(json_data=json_data)
+
+        elif json_data['type'] != 'ack':  # not ack and not timluli
+            conv_type = json_data["conversation"].split('@')[1][0]
+            if conv_type == group_chat_type:
+                handle_group_msg_gpt(json_data=json_data)
+            elif conv_type == private_chat_type:
+                handle_income_private_msg(json_data=json_data)
         else:
-            return jsonify({"Unknown Message ": "Message not from Admin during QA"}), 400
+            return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
+        return jsonify({"success": True}), 200
     # endregion
     else:  # not qa
         if 'user' not in json_data:
