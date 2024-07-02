@@ -48,6 +48,8 @@ IS_QA = False
 GPT3 = "gpt-3.5-turbo"
 GPT4 = "gpt-4-0125-preview"
 POLL_SIZE = 9
+IS_TO_MARK_NOT = True #if the emp asked in the poll to mark what she didnt do
+TO_REPHRASE_TASK=False
 
 
 # endregion
@@ -92,9 +94,12 @@ def is_task(message):
                                    f'please reply only with yes or no.')
         if 'yes' in answer.lower():
             json['is_task'] = True
-            answer = ask_gepeto(prompt=f'the following message:\n{message}\n'
-                                       f'is a task i need to do.\n'
-                                       f'please summerize the task for me in hebrew')
+            if TO_REPHRASE_TASK:
+                answer = ask_gepeto(prompt=f'the following message:\n{message}\n'
+                                           f'is a task i need to do.\n'
+                                           f'please summerize the task for me in hebrew')
+            else:
+                answer = message
             json['task'] = answer
         return json
 
@@ -153,7 +158,9 @@ def pop_poll_question(answers, emp_phone):
 def insert_and_delete_answers(answers, emp_phone, customer_phone):
     for answer in answers:
         question_id = list(answer.keys())[0]
-        status = answer[question_id]
+        status=answer[question_id]
+        if IS_TO_MARK_NOT:
+            status = (status-1)*-1 # makes not on a number. 1->0 and 0->1
         insert_answer(msg_id=question_id, status=status)
         hdb.insrt_daily_msg(msg_id=question_id, customer_phone=format_phone_for_selection(customer_phone),
                             status=status)
@@ -173,24 +180,20 @@ def get_next_question(raw_emp_phone, limit=POLL_SIZE):
     """
     global Qpoll
     emp_phone = format_phone_for_selection(raw_emp_phone)
-    is_emp_in_poll = False
     for d in Qpoll:
-        if d['emp'] == emp_phone:
-            raw_customer_phone = d['customer']
-        else:
+        if d['emp'] != emp_phone:
             continue
         if d['questions'] != []:
             # HERE! D['QUESTIONS'] IS ALL THE QUESTIONS IN TUPLES.
-            is_emp_in_poll = True
             if limit != -1:
                 return d['questions'][:limit]
             else:
                 return d['questions']
         else:
+            raw_customer_phone = d['customer']
             break
-    if not is_emp_in_poll:
-        finish_QnA(emp_phone=raw_emp_phone,
-                   customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
+    finish_QnA(emp_phone=raw_emp_phone,
+               customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
 
 
 def finish_QnA(emp_phone, customer_phone):
@@ -727,19 +730,22 @@ def send_next_QnA(raw_emp_phone):
     question = get_next_question(raw_emp_phone=raw_emp_phone)
     if question == None:
         return
-    #hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
     send_QnA_poll(question, raw_emp_phone)
-    kaki = 1
 
 
 def send_QnA_poll(question, raw_emp_phone):
     options = [q for _, q in question]
     options.append('סיימתי')
+    poll_msg=''
+    if IS_TO_MARK_NOT:
+        poll_msg= 'סמני את מה ש*לא* עשית. כשאת מסיימת, סמני "סיימתי"'
+    else:
+        poll_msg='סמני את מה שעשית. כשאת מסיימת, סמני "סיימתי"'
     body = {
 
         "to_number": raw_emp_phone,
         "type": "poll",
-        "message": "סמן את מה ש *לא* עשית",
+        "message": poll_msg,
         "options": options,
         "only_one": False
 
