@@ -124,6 +124,42 @@ def pop_question(emp_phone, status):
                     index += 1
 
 
+def pop_poll_question(answers, emp_phone):
+    """
+    take question outside Qpoll and insert answer to database
+    """
+    emp_phone = format_phone_for_selection(raw_phone_number=emp_phone.split('@')[0])
+    global Qpoll
+    if Qpoll is not None:
+        for d in Qpoll:
+            if d['emp'] == emp_phone:
+                ans = {answer['name']: answer['votes'] for answer in answers}
+                remaining_questions = []
+                removed_questions = []
+
+                for question in d['questions']:
+                    if question[1] in ans:
+                        kaki = question
+                        removed_questions.append({question[0]: ans[question[1]]})
+                    else:
+                        remaining_questions.append(question)
+
+                # Update d['questions'] with the remaining questions
+                d['questions'] = remaining_questions
+                insert_and_delete_answers(removed_questions, emp_phone, d['customer'])
+                return
+
+
+def insert_and_delete_answers(answers, emp_phone, customer_phone):
+    for answer in answers:
+        question_id = list(answer.keys())[0]
+        status = answer[question_id]
+        insert_answer(msg_id=question_id, status=status)
+        hdb.insrt_daily_msg(msg_id=question_id, customer_phone=format_phone_for_selection(customer_phone),
+                            status=status)
+    return
+
+
 def insert_answer(msg_id, status):
     if status == 0:
         return
@@ -131,7 +167,7 @@ def insert_answer(msg_id, status):
         hdb.update_msg_status(msg_id=msg_id)
 
 
-def get_next_question(raw_emp_phone,limit=POLL_SIZE):
+def get_next_question(raw_emp_phone, limit=POLL_SIZE):
     """
     limit: pass -1 if you wish to get all questions.
     """
@@ -640,12 +676,15 @@ def handle_team_maneger(ses_stage, raw_phone_number):
 def handle_employee(ses_stage, raw_phone_number):
     pass
 
-def handle_poll_answers(answers,raw_phone_number):
+
+def handle_poll_answers(answers, raw_phone_number):
     if answers[POLL_SIZE]['votes'] > 0:
-        pass
+        pop_poll_question(answers, raw_phone_number)
     # finish answereing poll. send next one or finish day sum
     else:
         return
+
+
 def handle_timluli(json_data):
     global last_sent_to_timluli
     global TO_USE_GPT
@@ -689,24 +728,24 @@ def send_next_QnA(raw_emp_phone):
     if question == None:
         return
     #hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
-    send_QnA_poll(question,raw_emp_phone)
-    kaki=1
+    send_QnA_poll(question, raw_emp_phone)
+    kaki = 1
 
 
-
-def send_QnA_poll(question,raw_emp_phone):
-    options = [q for _,q in question]
+def send_QnA_poll(question, raw_emp_phone):
+    options = [q for _, q in question]
     options.append('סיימתי')
-    body={
+    body = {
 
-            "to_number": raw_emp_phone,
-            "type": "poll",
-            "message": "סמן את מה ש *לא* עשית",
-            "options": options,
-            "only_one": False
+        "to_number": raw_emp_phone,
+        "type": "poll",
+        "message": "סמן את מה ש *לא* עשית",
+        "options": options,
+        "only_one": False
 
     }
     send_msg(body)
+
 
 def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
     print(f"starting daily to number {raw_emp_phone}.is approved= {is_approved}")
@@ -768,7 +807,7 @@ def webhook():
         if json_data['type'] == 'ack':  # returned acknowledgement from the receiver
             if 'options' in json_data['data'][0]:
                 # answered a poll
-                handle_poll_answers(json_data['data'][0]['options'],json_data['data'][0]['chatId'])
+                handle_poll_answers(json_data['data'][0]['options'], json_data['data'][0]['chatId'])
             else:
                 print(f"Message {json_data['data'][0]['msgId']} was acked")
                 return jsonify({"ack": "Received an ack message"}), 200
@@ -813,10 +852,12 @@ def webhook():
             return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
         return jsonify({"success": True}), 200
 
+
 @app.route('/message', methods=['GET'])
 def results():
-    kaki=1
+    kaki = 1
     return "kaki"
+
 
 if __name__ == '__main__':
     #app.run()
