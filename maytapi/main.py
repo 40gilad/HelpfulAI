@@ -678,6 +678,7 @@ def send_next_QnA(raw_emp_phone):
         return
     #hdb.insert_sent_message(question['id'], format_phone_for_selection(raw_emp_phone))
     send_QnA_poll(question,raw_emp_phone)
+    kaki=1
 
 
 
@@ -751,7 +752,11 @@ def webhook():
                 return jsonify({"error": "Received an error message"}), 400
 
             elif json_data['type'] == 'ack':  # returned acknowledgement from the receiver
-                print("message was acked")
+                if 'options' in json_data['data']:
+                    # answered a poll
+                    pass
+                else:
+                    print(f"Message {json_data['data'][0]['msgId']} was acked")
 
             elif ('conversation' in json_data and json_data['conversation']
                   == '972537750144@c.us'):  # returned voice to txt from timluli
@@ -795,6 +800,10 @@ def webhook():
             return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
         return jsonify({"success": True}), 200
 
+@app.route('/message', methods=['GET'])
+def results():
+    kaki=1
+    return "kaki"
 
 if __name__ == '__main__':
     #app.run()
@@ -817,4 +826,11 @@ if __name__ == '__main__':
     # start_QnA()
     Qpoll = hdb.get_QnA_dict()
     send_next_QnA("972526263862@c.us")
+    #send_msg_to_gilad("fuckoff")
     serve(app)
+
+#msg:
+#{'type': 'ack', 'product_id': '141c944d-dd67-4b2f-8845-4403c885b988', 'phone_id': 35552, 'data': [{'ackType': 'reached', 'ackCode': 2, 'chatId': '972526263862@c.us', 'msgId': 'dbd1a130-385c-11ef-8c53-e5e351cbf3af', 'time': 1719915695, 'rxid': 'true_972526263862@c.us_3EB095C038B24CD696FECD'}], 'phoneId': 35552}
+
+#poll:
+#{'type': 'ack', 'product_id': '141c944d-dd67-4b2f-8845-4403c885b988', 'phone_id': 35552, 'data': [{'msgId': '0b3e21f0-385d-11ef-b54e-2911bdc6dcf6', 'chatId': '972526263862@c.us', 'time': 1719915792, 'options': [{'name': 'המשימה היא להכין פרסום להפצה כמו ברבעון הקודם.', 'id': 0, 'votes': 0}, {'name': 'עליך להקדים את הישיבה הראשונה עם קיסטון ליום שלישי, ה-10 בנובמבר, 2023, לשעה 14:00.', 'id': 1, 'votes': 0}, {'name': 'המשימה היא להפיץ את ההודעה.', 'id': 2, 'votes': 0}, {'name': 'עדכן שבועז רביד עבר לעבוד בסיגמא.', 'id': 3, 'votes': 0}, {'name': 'הכנה', 'id': 4, 'votes': 1}, {'name': 'לבטל למיכאל בן יעקב עם תורפז', 'id': 5, 'votes': 0}, {'name': "המשימה: רביד מבקש להוציא שוב את ההודעה של תורםז על הוובינר שיתקיים ביום א'.", 'id': 6, 'votes': 0}, {'name': 'המטלה היא "להקדים" - כלומר עליך לעשות פעולה מסוימת בצורה מהירה או לפני הזמן המתוכנן או הצפוי.', 'id': 7, 'votes': 0}, {'name': 'לתזמן שיחה טלפונית בשעה 12 בין רחל סגל מקיסטון לשמואל בן אריה מפיונירת.', 'id': 8, 'votes': 0}, {'name': 'המשימה היא להכין את הנוסח הסופי של הידיעה בנוגע לדוחות שיופרסמו על ידי תורפז ביום ראשון בבוקר, סביב שעה 8. הנוסח הסופי יהיה מוכן במוצאי שבת.', 'id': 9, 'votes': 0}], 'text': 'סמן את מה ש *לא* עשית', 'rxid': 'true_972526263862@c.us_3EB04469BD873E3C58B8E0'}], 'phoneId': 35552}
