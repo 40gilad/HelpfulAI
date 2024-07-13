@@ -144,7 +144,6 @@ def pop_poll_question(answers, emp_phone):
 
                 for question in d['questions']:
                     if question[1] in ans:
-                        kaki = question
                         removed_questions.append({question[0]: ans[question[1]]})
                     else:
                         remaining_questions.append(question)
@@ -191,9 +190,9 @@ def get_next_question(raw_emp_phone, limit=POLL_SIZE):
                 return d['questions']
         else:
             raw_customer_phone = d['customer']
-            break
-    finish_QnA(emp_phone=raw_emp_phone,
-               customer_phone=format_phone_for_sending(raw_customer_phone))  # here! customers phone is from d
+            finish_QnA(emp_phone=raw_emp_phone,
+                       customer_phone=format_phone_for_sending(raw_customer_phone))
+            return
 
 
 def finish_QnA(emp_phone, customer_phone):
@@ -681,9 +680,9 @@ def handle_employee(ses_stage, raw_phone_number):
 
 
 def handle_poll_answers(answers, raw_phone_number):
-    if answers[POLL_SIZE]['votes'] > 0:
+    if answers[-1]['votes'] > 0:
         pop_poll_question(answers, raw_phone_number)
-    # finish answereing poll. send next one or finish day sum
+        send_next_QnA(raw_phone_number)
     else:
         return
 
@@ -762,25 +761,16 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
         if status == 0:
             txt = f"*זה ישאר למחר:*\n"
         elif status == 1:
-            if is_approved:
-                txt = f" * סיכום היום של {hdb.get_employee_name(phone_number=formatted_emp_phone)} * \n"
-                txt = txt + f"עבור העסק {hdb.get_buisness_name(phone_number=formatted_customer_phone)} ביצענו היום : \n"
-            elif not is_approved:
-                txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
-                txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
+            txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
+            txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
         counter = 1
         for m in msgs:
             txt = txt + f"\n{counter}. {m[1]}"
             counter = counter + 1
-        if not is_approved:
-            send_private_txt_msg(msg=txt, to=[raw_emp_phone])
-    if not is_approved:
-        hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
-                         stage=SESSION_DICT['ApproveQnA'])
-        hdb.insert_waiting_for_approve(emp_number=formatted_emp_phone, customer_number=formatted_customer_phone)
-        send_private_txt_msg(msg="האם את מאשרת את סיכום היום?", to=[raw_emp_phone])
-    elif is_approved:
-        hdb.delete_daily(customer_phone=formatted_customer_phone)
+    send_private_txt_msg(msg=txt, to=[raw_emp_phone])
+    hdb.update_stage(hdb.get_system_id(formatted_emp_phone),
+                     stage=SESSION_DICT['SendMenu'])
+    hdb.delete_daily(customer_phone=formatted_customer_phone)
 
 
 # endregion
@@ -859,10 +849,6 @@ def webhook():
         return jsonify({"success": True}), 200
 
 
-@app.route('/message', methods=['GET'])
-def results():
-    kaki = 1
-    return "kaki"
 
 
 if __name__ == '__main__':
@@ -871,7 +857,6 @@ if __name__ == '__main__':
 
     TO_USE_GPT = True
     IS_QA = True
-
     #check if its time for day conclusion
     # hour_check_thread = threading.Thread(target=trigeer_QnA)
     # hour_check_thread.start()
@@ -885,7 +870,7 @@ if __name__ == '__main__':
     # timluli_queue_thread.start()
     # start_QnA()
     Qpoll = hdb.get_QnA_dict()
-    send_next_QnA("972526263862@c.us")
+    #send_next_QnA("972526263862@c.us")
     #send_msg_to_gilad("fuckoff")
     serve(app)
 
