@@ -348,16 +348,17 @@ class Database:
         nums = self.execute_selection(
             "    select quoted_phone,quoter_phone from messages where status=0 group by quoter_phone,quoted_phone")
         poll = []
-        for t in nums:
-            customer, emp = t
-            questions = self.select_with("messages", quoter_phone=emp, quoted_phone=customer, status='0',
-                                         col="msg_id,content")
-            poll_record = {"emp": emp, "customer": customer}
-            poll_record['questions'] = []
-            for q in questions:
-                poll_record['questions'].append((q[0], q[1]))
-            poll.append(poll_record)
-        return poll
+        if nums is not None:
+            for t in nums:
+                customer, emp = t
+                questions = self.select_with("messages", quoter_phone=emp, quoted_phone=customer, status='0',
+                                             col="msg_id,content")
+                poll_record = {"emp": emp, "customer": customer}
+                poll_record['questions'] = []
+                for q in questions:
+                    poll_record['questions'].append((q[0], q[1]))
+                poll.append(poll_record)
+            return poll
 
     def get_QnA_emps(self):
         return self.execute_selection("select quoter_phone from messages where status=0 group by quoter_phone")
@@ -380,7 +381,7 @@ class Database:
             self.perror(err)
             return None
 
-    def update_stage(self, system_id, stage):
+    def update_stage(self, system_id=None,raw_phone_number=None, stage=None):
         command = f"update sessions set stage=%s where system_id=%s"
         params = [stage, system_id]
         self.execute_update(command, params)
