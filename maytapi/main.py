@@ -20,6 +20,7 @@ import DBmain as Database
 # region Globals and initializations
 
 app = Flask(__name__)
+app.config['DEBUG'] = False
 load_dotenv(dotenv_path='Maytapi.env')
 PRODUCT_ID = os.getenv("PRODUCT_ID")
 PHONE_ID = os.getenv("PHONE_ID")
