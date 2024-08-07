@@ -760,7 +760,9 @@ def send_daily_report(raw_emp_phone, raw_customer_phone, is_approved=False):
         if status == 0:
             txt = f"*זה ישאר למחר:*\n"
         elif status == 1:
-            txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
+            #txt = f" * היי {hdb.get_buisness_name(phone_number=formatted_customer_phone)} *\n "
+            txt = f"היי "
+            txt = txt + f"*{hdb.get_buisness_name(phone_number=formatted_customer_phone)}*\n"
             txt = txt + f"הנה מה שעשיתי בשבילך היום: \n"
         counter = 1
         for m in msgs:
