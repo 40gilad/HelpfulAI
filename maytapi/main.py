@@ -821,16 +821,16 @@ def webhook():
             return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
         return jsonify({"success": True}), 200
     # endregion
-    else:  # not qa
-        if 'user' not in json_data:
-            print(json_data)
-            return jsonify({"non-msg": "Received non message"}), 400
-        if json_data['type'] == 'error':
-            print(f'Error:{json_data}')
-            return jsonify({"error": "Received an error message"}), 400
 
-        elif json_data['type'] == 'ack':  # returned acknowledgement from the receiver
-            print("message was acked")
+
+    else:  # not qa
+        if json_data['type'] == 'ack':  # returned acknowledgement from the receiver
+            if 'options' in json_data['data'][0]:
+                # answered a poll
+                handle_poll_answers(json_data['data'][0]['options'], json_data['data'][0]['chatId'])
+            else:
+                print(f"Message {json_data['data'][0]['msgId']} was acked")
+                return jsonify({"ack": "Received an ack message"}), 200
 
         elif ('conversation' in json_data and json_data['conversation']
               == '972537750144@c.us'):  # returned voice to txt from timluli
@@ -839,11 +839,10 @@ def webhook():
         elif json_data['type'] != 'ack':  # not ack and not timluli
             conv_type = json_data["conversation"].split('@')[1][0]
             if conv_type == group_chat_type:
-                handle_group_msg(json_data=json_data)
+                handle_group_msg_gpt(json_data=json_data)
             elif conv_type == private_chat_type:
                 handle_income_private_msg(json_data=json_data)
         else:
-            print(f"unknown{json_data}")
             return jsonify({"Unknown Message": "Received an Unknown Message"}), 400
         return jsonify({"success": True}), 200
 
@@ -855,21 +854,19 @@ if __name__ == '__main__':
     from waitress import serve
 
     TO_USE_GPT = True
-    IS_QA = True
+    IS_QA = False
+
     #check if its time for day conclusion
-    # hour_check_thread = threading.Thread(target=trigeer_QnA)
-    # hour_check_thread.start()
+    hour_check_thread = threading.Thread(target=trigeer_QnA)
+    hour_check_thread.start()
 
     #check if db is connected
-    # db_connection_thread = threading.Thread(target=check_db_connection)
-    # db_connection_thread.start()
+    db_connection_thread = threading.Thread(target=check_db_connection)
+    db_connection_thread.start()
 
     #handle timluli queue
-    # timluli_queue_thread = threading.Thread(target=pop_timluli)
-    # timluli_queue_thread.start()
-    #start_QnA()
-    Qpoll = hdb.get_QnA_dict()
-    send_next_QnA("972526263862@c.us")
-    #send_msg_to_gilad("fuckoff")
+    timluli_queue_thread = threading.Thread(target=pop_timluli)
+    timluli_queue_thread.start()
+
     serve(app)
 
