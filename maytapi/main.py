@@ -721,9 +721,7 @@ def start_QnA():
 def is_ready_for_QnA(emp_phone):
     send_private_txt_msg(f" היי *{hdb.get_employee_name(phone_number=format_phone_for_selection(emp_phone))}* \n"
                          f" זה הבוט של הלפפול :) \n"
-                         f" מוכנה לסיכום היום שלנו? "
-                         f"אני אכתוב לך מה ביקשו ממך במהלך היום ואת תגידי לי אם ביצעת את זה או לא"
-                         f"(יש לענות רק בכן או לא)", to=[emp_phone])
+                         f" מוכנה לסיכום היום שלנו? \n", to=[emp_phone])
 
 
 def send_next_QnA(raw_emp_phone):
@@ -738,7 +736,7 @@ def send_QnA_poll(question, raw_emp_phone):
     options.append('סיימתי')
     poll_msg=''
     if IS_TO_MARK_NOT:
-        poll_msg= 'סמני את מה ש*לא* עשית. כשאת מסיימת, סמני "סיימתי"'
+        poll_msg= 'סמני את מה ש *לא* עשית. כשאת מסיימת, סמני "סיימתי"'
     else:
         poll_msg='סמני את מה שעשית. כשאת מסיימת, סמני "סיימתי"'
     body = {
