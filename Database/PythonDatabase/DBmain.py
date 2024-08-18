@@ -1,9 +1,8 @@
 import time
-
 import mysql.connector
 import os
 from dotenv import load_dotenv
-from colorama import Fore, Style
+from colorama import Style
 
 
 class Database:
@@ -15,12 +14,12 @@ class Database:
 
     @staticmethod
     def psuccess(message):
-        print(f"{Fore.LIGHTCYAN_EX} {message}")
+        print(f"'tDB SUCCESS: {message}")
         print(Style.RESET_ALL)
 
     @staticmethod
     def perror(message):
-        print(f"{Fore.RED}Error: {message}")
+        print(f"DB ERROR: {message}")
         print(Style.RESET_ALL)
 
     def format_select_query(self, query, params={None}):
@@ -46,12 +45,13 @@ class Database:
         if phone_number.startswith('972'):
             phone_number = phone_number[3:]
 
-        # Check if the number starts with '0', if not, add '0' at the beginning
-        if not phone_number.startswith('0'):
-            phone_number = '0' + phone_number
-
         if phone_number.endswith('@c.us'):
-            phone_number = phone_number[:10]
+            phone_number = phone_number[:-5]
+
+        # Check if the number starts with '0', if not, add '0' at the beginning
+        numbers_not_to_add_zero = ['491772314474']
+        if not phone_number.startswith('0') and phone_number not in numbers_not_to_add_zero:
+            phone_number = '0' + phone_number
 
         return phone_number
 
