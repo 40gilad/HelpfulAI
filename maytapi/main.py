@@ -49,8 +49,8 @@ IS_QA = False
 GPT3 = "gpt-3.5-turbo"
 GPT4 = "gpt-4-0125-preview"
 POLL_SIZE = 9
-IS_TO_MARK_NOT = True #if the emp asked in the poll to mark what she didnt do
-TO_REPHRASE_TASK=False
+IS_TO_MARK_NOT = True  #if the emp asked in the poll to mark what she didnt do
+TO_REPHRASE_TASK = False
 
 
 # endregion
@@ -158,9 +158,9 @@ def pop_poll_question(answers, emp_phone):
 def insert_and_delete_answers(answers, emp_phone, customer_phone):
     for answer in answers:
         question_id = list(answer.keys())[0]
-        status=answer[question_id]
+        status = answer[question_id]
         if IS_TO_MARK_NOT:
-            status = (status-1)*-1 # makes not on a number. 1->0 and 0->1
+            status = (status - 1) * -1  # makes not on a number. 1->0 and 0->1
         insert_answer(msg_id=question_id, status=status)
         hdb.insrt_daily_msg(msg_id=question_id, customer_phone=format_phone_for_selection(customer_phone),
                             status=status)
@@ -254,11 +254,12 @@ def forward_to_timluli():
 
 
 def pop_timluli():
+    minuts_for_next_check=20
     global timluli_queue
     while True:
         if timluli_queue.empty():
-            print("timluli_queue is empty. will check again in 10 mins")
-            time.sleep(5 * 60)  # wait 5 mins
+            print(f"timluli_queue is empty. will check again in {minuts_for_next_check} mins")
+            time.sleep(minuts_for_next_check * 60)  # wait 20 mins
         else:
             forward_to_timluli()
 
@@ -459,12 +460,14 @@ def format_phone_for_selection(raw_phone_number):
     if phone_number.startswith('972'):
         phone_number = phone_number[3:]
 
-    # Check if the number starts with '0', if not, add '0' at the beginning
-    if not phone_number.startswith('0'):
-        phone_number = '0' + phone_number
 
     if phone_number.endswith('@c.us'):
-        phone_number = phone_number[:10]
+        phone_number = phone_number[:-5]
+
+    # Check if the number starts with '0', if not, add '0' at the beginning
+    numbers_not_to_add_zero = ['491772314474']
+    if not phone_number.startswith('0') and phone_number not in numbers_not_to_add_zero:
+        phone_number = '0' + phone_number
 
     return phone_number
 
@@ -616,7 +619,7 @@ def handle_income_private_msg(json_data):
 
 def run_conversation(ses_stage, permission, raw_phone_number, income_msg, sys_id):
     # ---------- triggering QnA from admins phone --------------#
-    if sys_id == 1 or sys_id == 2:  #talking to gilad
+    if sys_id == 1 or sys_id == 2:  # talking to gilad or yona
         if income_msg.lower() == "qna":
             start_QnA()
             return
@@ -734,11 +737,11 @@ def send_next_QnA(raw_emp_phone):
 def send_QnA_poll(question, raw_emp_phone):
     options = [q for _, q in question]
     options.append('סיימתי')
-    poll_msg=''
+    poll_msg = ''
     if IS_TO_MARK_NOT:
-        poll_msg= 'סמני את מה ש *לא* עשית. כשאת מסיימת, סמני "סיימתי"'
+        poll_msg = 'סמני את מה ש *לא* עשית. כשאת מסיימת, סמני "סיימתי"'
     else:
-        poll_msg='סמני את מה שעשית. כשאת מסיימת, סמני "סיימתי"'
+        poll_msg = 'סמני את מה שעשית. כשאת מסיימת, סמני "סיימתי"'
     body = {
 
         "to_number": raw_emp_phone,
@@ -822,7 +825,6 @@ def webhook():
         return jsonify({"success": True}), 200
     # endregion
 
-
     else:  # not qa
         if json_data['type'] == 'ack':  # returned acknowledgement from the receiver
             if 'options' in json_data['data'][0]:
@@ -847,13 +849,13 @@ def webhook():
         return jsonify({"success": True}), 200
 
 
-
-
 if __name__ == '__main__':
     #app.run()
     from waitress import serve
 
     TO_USE_GPT = True
+    handle_group_msg_gpt({'product_id': '141c944d-dd67-4b2f-8845-4403c885b988', 'phone_id': 35552, 'message': {'type': 'text', 'text': 'תעדכן אותי עד מחר בצהריים', 'id': 'false_120363197997453853@g.us_3AC46AE089597178DC41_491772314474@c.us', '_serialized': 'false_120363197997453853@g.us_3AC46AE089597178DC41_491772314474@c.us', 'fromMe': False}, 'user': {'id': '491772314474@c.us', 'name': 'Eli', 'phone': '491772314474'}, 'conversation': '120363197997453853@g.us', 'conversation_name': 'Cha-Cha תפעול', 'receiver': '972543934205', 'timestamp': '15/08/2024 13:11', 'type': 'message', 'reply': 'https://api.maytapi.com/api/141c944d-dd67-4b2f-8845-4403c885b988/35552/sendMessage', 'productId': '141c944d-dd67-4b2f-8845-4403c885b988', 'phoneId': 35552}
+)
     IS_QA = False
 
     #check if its time for day conclusion
@@ -869,4 +871,3 @@ if __name__ == '__main__':
     timluli_queue_thread.start()
 
     serve(app)
-
