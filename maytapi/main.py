@@ -13,7 +13,7 @@ import pytz
 
 sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
 import queue
-import DBmain as Database
+from Database.PythonDatabase import DBmain as Database
 
 # endregion
 
@@ -289,7 +289,6 @@ def send_msg(body):
     if breakpoint == 1:
         return
     execute_post(body=body, url_suffix='sendMessage')
-    write_log(json_data=body, outcome=True)
 
 
 def react_robot(group_id, msg_id):
@@ -445,7 +444,7 @@ def format_phone_for_sending(phone_number):
     if phone_number.startswith('0'):
         phone_number = phone_number[1:]
         phone_number = '972' + phone_number
-        return phone_number
+    return phone_number
 
 
 def format_phone_for_selection(raw_phone_number):
@@ -791,7 +790,7 @@ def send_admin_menu(raw_phone_number):
 @app.route("/", methods=["POST"])
 def webhook():
     json_data = request.get_json()
-    write_log(json_data=json_data, income=True)
+    print(f"------------------------------------------------------------\n{json_data}")
     json_data['timestamp'] = datetime.now(pytz.timezone('Asia/Jerusalem')).strftime(Tstamp_format)
     # region QA:
     if IS_QA:
@@ -854,8 +853,6 @@ if __name__ == '__main__':
     from waitress import serve
 
     TO_USE_GPT = True
-    handle_group_msg_gpt({'product_id': '141c944d-dd67-4b2f-8845-4403c885b988', 'phone_id': 35552, 'message': {'type': 'text', 'text': 'תעדכן אותי עד מחר בצהריים', 'id': 'false_120363197997453853@g.us_3AC46AE089597178DC41_491772314474@c.us', '_serialized': 'false_120363197997453853@g.us_3AC46AE089597178DC41_491772314474@c.us', 'fromMe': False}, 'user': {'id': '491772314474@c.us', 'name': 'Eli', 'phone': '491772314474'}, 'conversation': '120363197997453853@g.us', 'conversation_name': 'Cha-Cha תפעול', 'receiver': '972543934205', 'timestamp': '15/08/2024 13:11', 'type': 'message', 'reply': 'https://api.maytapi.com/api/141c944d-dd67-4b2f-8845-4403c885b988/35552/sendMessage', 'productId': '141c944d-dd67-4b2f-8845-4403c885b988', 'phoneId': 35552}
-)
     IS_QA = False
 
     #check if its time for day conclusion
