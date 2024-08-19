@@ -2,7 +2,6 @@ import time
 import mysql.connector
 import os
 from dotenv import load_dotenv
-from colorama import Style
 
 
 class Database:
@@ -14,13 +13,11 @@ class Database:
 
     @staticmethod
     def psuccess(message):
-        print(f"'tDB SUCCESS: {message}")
-        print(Style.RESET_ALL)
+        print(f"\tDB SUCCESS: {message}")
 
     @staticmethod
     def perror(message):
         print(f"DB ERROR: {message}")
-        print(Style.RESET_ALL)
 
     def format_select_query(self, query, params={None}):
         query_conditions = []
