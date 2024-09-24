@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, date
 import threading
 import pytz
 
-sys.path.append(r'/home/ubuntu/HelpfulAI/Database/PythonDatabase')
+sys.path.append(r'/home/ubuntu/HelpfulAI')
 import queue
 from Database.PythonDatabase import DBmain as Database
 
@@ -74,6 +74,7 @@ def ask_gepeto(prompt, model=GPT4):
             {"role": "user", "content": prompt}
         ]
     }
+    print(data["messages"][0]["content"])
     try:
         # Making a POST request to the API
         response = requests.post(endpoint, json=data, headers=headers)
@@ -90,9 +91,18 @@ def is_task(message):
     json = {'is_task': False, "task": ""}
     if message != None or message != "":
 
-        answer = ask_gepeto(prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
-                                   f'i want to know if it contains a task or an action i should do for him.\n'
-                                   f'please reply only with yes or no.')
+        # answer = ask_gepeto(prompt=f'the following message:\n{message}\nis a message my boss sent me on whasapp.\n'
+        #                            f'i want to know if it contains a task or an action i should do for him.\n'
+        #                            f'please reply only with yes or no.')
+        answer = ask_gepeto(prompt=f'The following message was sent by my boss on WhatsApp:\n"{message}".\n'
+                                   f'I want to know if this message contains a clear task or action I need to complete for them.\n'
+                                   f'if you say its a task, i will forward this message to one of my employees, so the action that needs to be done and its context should be understandble from the message only.'
+                                   f'If the task requires additional context from earlier messages to understand, reply with "insufficient context".\n'
+                                   f'If it is a general message or small talk that does not require action, reply with "not a task".\n'
+                                   f'Reply with one of the following: "yes" (it is a clear task), "no" (not a task), or "insufficient context".')
+        print()
+        print(answer)
+        return
         if 'yes' in answer.lower():
             json['is_task'] = True
             if TO_REPHRASE_TASK:
@@ -246,7 +256,7 @@ def forward_to_timluli():
     global timluli_queue
     global last_sent_to_timluli
     while timluli_is_locked():
-        time.sleep(10)  # wait 10 seconds until next check
+        time.sleep(60)  # wait 10 seconds until next check
         print("in forward_to_timluli: last_sent_to_timluli is not None")
     last_sent_to_timluli = timluli_queue.get()
     print(f"forwarding to timluli: {last_sent_to_timluli}")
@@ -356,14 +366,14 @@ def trigeer_QnA():
     while True:
         now = datetime.now(pytz.timezone('Asia/Jerusalem'))
         current_hour = now.hour
-        if current_hour == 17:  # desired hour to trigger function (will be checked once at 19:00-19:59
+        if current_hour == 16:  # desired hour to trigger function (will be checked once at 19:00-19:59
             today = now.weekday()
             if today is days["Friday"] or today is days["Saturday"]:
                 pass
             else:
                 start_QnA()
-                print("It's 17:00 ")
-            time.sleep(15 * 60 * 60)  # Sleep for 15 hours
+                print("It's ~ 16:00 ")
+            time.sleep(22 * 60 * 60)  # Sleep for 22 hours
         else:
             print(f"It's not 20:00. Waiting for 55 minutes. Current time: {current_hour}")
             time.sleep(55 * 60)  # Sleep for 55 minutes
@@ -849,9 +859,11 @@ def webhook():
 
 
 if __name__ == '__main__':
-    #app.run()
     from waitress import serve
-
+    is_task('תעבירי לה את ההקלטה ואת שתי ההודעות עם הלינקים')
+    """
+    Qpoll = hdb.get_QnA_dict()
+    start_QnA()
     TO_USE_GPT = True
     IS_QA = False
 
@@ -868,3 +880,4 @@ if __name__ == '__main__':
     timluli_queue_thread.start()
 
     serve(app)
+    """
